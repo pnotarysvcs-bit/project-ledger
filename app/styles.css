@@ -1,0 +1,28 @@
+:root { color-scheme: dark; font-family: Arial, sans-serif; background: #080909; color: #f4f7f7; }
+* { box-sizing: border-box; }
+body { margin: 0; background: #080909; }
+main { padding: 28px 16px; min-height: 100vh; }
+.eyebrow { color: #00d6a3; margin: 0 0 8px; font-size: 14px; }
+h1 { margin: 0 0 10px; font-size: 30px; }
+.lede { color: #a9b2bb; max-width: 650px; line-height: 1.45; margin: 0 0 20px; }
+.summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
+.summary article, .panel { background: #171818; border: 1px solid #292b2c; border-radius: 12px; }
+.summary article { padding: 18px 16px; display: grid; gap: 11px; }
+.summary span { color: #bac4cc; font-size: 14px; }
+.summary strong { color: #00d6a3; font-size: 24px; }
+.summary small, td small { color: #7f8a94; }
+.summary .blue { color: #4597ff; }.summary .amber { color: #ffbd00; }.summary .red { color: #ff4754; }
+.panel { overflow: hidden; }
+.panel header { height: 55px; padding: 0 20px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #292b2c; color: #00d6a3; }
+button { border: 0; border-radius: 9px; background: #00bd8c; color: #001710; padding: 10px 16px; font-size: 14px; }
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; min-width: 850px; }
+th { padding: 14px 20px; color: #82909b; font-size: 12px; font-weight: normal; text-align: left; text-transform: uppercase; }
+td { padding: 18px 20px; border-top: 1px solid #292b2c; font-size: 14px; }
+td b, td small { display: block; } td small { margin-top: 6px; }
+.status { display: inline-block; border-radius: 99px; padding: 5px 10px; text-transform: capitalize; }
+.status.overdue { color: #ff6872; background: #3d171c; border: 1px solid #6b2830; }
+.status.new { color: #da57ff; background: #2c1736; border: 1px solid #553068; }
+.status.paid { color: #16e1ab; background: #12372d; }
+.status.due-soon { color: #ffd25c; background: #403311; }
+@media (max-width: 800px) { .summary { grid-template-columns: repeat(2, 1fr); } }
