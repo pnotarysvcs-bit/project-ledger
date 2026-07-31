@@ -8,7 +8,7 @@ const bills = [
 ];
 
 const payments = [
-  // Affirm was submitted in July. It becomes the last-paid payment in August.
+  // Affirm was completed in July. It becomes the last-paid payment in August.
   { billId: 'affirm', date: '2026-07-06', postOn: '2026-08-01', amount: 64.52 },
 ];
 

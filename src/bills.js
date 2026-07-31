@@ -43,7 +43,7 @@ export function findLastPayment(bill, payments = [], { asOf = new Date() } = {})
     .sort((left, right) => dateOnly(right.date) - dateOnly(left.date))[0] ?? null;
 }
 
-function findSubmittedPayment(bill, payments = [], asOf = new Date()) {
+function findCompletedPaymentAwaitingRollover(bill, payments = [], asOf = new Date()) {
   const today = dateOnly(asOf);
 
   return payments.find((payment) => paymentBelongsToBill(payment, bill)
@@ -59,7 +59,7 @@ function findSubmittedPayment(bill, payments = [], asOf = new Date()) {
 export function deriveBillStatus(bill, {
   asOf = new Date(),
   lastPayment = null,
-  submittedPayment = null,
+  completedPayment = null,
 } = {}) {
   const dueDate = dateOnly(bill.nextDue);
   const today = dateOnly(asOf);
@@ -67,7 +67,7 @@ export function deriveBillStatus(bill, {
 
   if (bill.inactive) return 'inactive';
   if (!dueDate) return bill.status ?? 'new';
-  if (submittedPayment) return 'submitted';
+  if (completedPayment) return 'completed';
 
   if (paidDate && paidDate >= dueDate) return 'paid';
   if (dueDate < today) return 'overdue';
@@ -81,13 +81,13 @@ export function deriveBillStatus(bill, {
 export function enrichBills(bills, payments = [], options = {}) {
   return bills.map((bill) => {
     const lastPayment = findLastPayment(bill, payments, options);
-    const submittedPayment = findSubmittedPayment(bill, payments, options.asOf);
+    const completedPayment = findCompletedPaymentAwaitingRollover(bill, payments, options.asOf);
     const lastPaid = lastPayment?.date ?? bill.lastPaid ?? null;
 
     return {
       ...bill,
       lastPaid,
-      status: deriveBillStatus(bill, { ...options, lastPayment, submittedPayment }),
+      status: deriveBillStatus(bill, { ...options, lastPayment, completedPayment }),
     };
   });
 }
