@@ -47,12 +47,14 @@ export function deriveBillStatus(bill, { asOf = new Date(), lastPayment = null }
   const dueDate = dateOnly(bill.nextDue);
   const today = dateOnly(asOf);
   const paidDate = dateOnly(lastPayment?.date ?? bill.lastPaid);
+  const paidThrough = dateOnly(bill.paidThrough);
 
   if (bill.inactive) return 'inactive';
   if (!dueDate) return bill.status ?? 'new';
 
-  // A payment on or after this cycle's due date settles the bill.
-  if (paidDate && paidDate >= dueDate) return 'paid';
+  // Some creditors post a payment before the cycle's nominal due date. In
+  // that case paidThrough identifies the cycle settled by the payment.
+  if ((paidThrough && paidThrough >= dueDate) || (paidDate && paidDate >= dueDate)) return 'paid';
   if (dueDate < today) return 'overdue';
 
   const daysUntilDue = Math.round((dueDate - today) / DAY_IN_MS);

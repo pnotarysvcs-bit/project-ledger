@@ -22,6 +22,17 @@ test('a payment for the current cycle marks the bill paid', () => {
   assert.equal(deriveBillStatus(bill, { asOf, lastPayment }), 'paid');
 });
 
+test('a payment posted before its covered due date is not marked overdue', () => {
+  const bill = {
+    nextDue: '2026-07-06',
+    lastPaid: '2026-06-06',
+    paidThrough: '2026-07-06',
+    status: 'new',
+  };
+
+  assert.equal(deriveBillStatus(bill, { asOf }), 'paid');
+});
+
 test('latest imported payment is found by id or normalized payee', () => {
   const bill = { id: 7, payee: 'Missouri Dep of Rev' };
   const payments = [
