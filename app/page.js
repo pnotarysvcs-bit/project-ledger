@@ -2,7 +2,7 @@ import { enrichBills } from '../src/bills.js';
 
 const bills = [
   { id: 'wci', payee: 'WCI of Missouri', frequency: 'Quarterly', type: 'Personal', account: 'TCU', amount: 101.76, lastPaid: '2026-06-07', nextDue: '2026-08-07', status: 'new' },
-  { id: 'affirm', payee: 'Affirm', frequency: 'Monthly', type: 'Personal', account: 'TCU', amount: 64.52, lastPaid: '2026-05-06', nextDue: '2026-08-05', status: 'new' },
+  { id: 'affirm', payee: 'Affirm', frequency: 'Monthly', type: 'Personal', account: 'TCU', amount: 64.52, lastPaid: '2026-06-06', nextDue: '2026-07-06', status: 'new' },
   { id: 'irs', payee: 'IRS installment', frequency: 'Monthly', type: 'Personal', account: 'TCU', amount: 238, nextDue: '2026-07-15', status: 'new' },
   { id: 'dor', payee: 'Missouri Dept of Rev', frequency: 'Monthly', type: 'Personal', account: 'TCU', amount: 147.13, nextDue: '2026-07-26', status: 'new' },
 ];
