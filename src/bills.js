@@ -33,28 +33,43 @@ function paymentBelongsToBill(payment, bill) {
  * A payment linked by bill id takes precedence; payee matching supports older
  * imported transactions which pre-date stable bill ids.
  */
-export function findLastPayment(bill, payments = []) {
+export function findLastPayment(bill, payments = [], { asOf = new Date() } = {}) {
+  const today = dateOnly(asOf);
+
   return payments
-    .filter((payment) => paymentBelongsToBill(payment, bill) && payment.date)
+    .filter((payment) => paymentBelongsToBill(payment, bill)
+      && payment.date
+      && (!payment.postOn || dateOnly(payment.postOn) <= today))
     .sort((left, right) => dateOnly(right.date) - dateOnly(left.date))[0] ?? null;
+}
+
+function findSubmittedPayment(bill, payments = [], asOf = new Date()) {
+  const today = dateOnly(asOf);
+
+  return payments.find((payment) => paymentBelongsToBill(payment, bill)
+    && payment.date
+    && payment.postOn
+    && dateOnly(payment.postOn) > today) ?? null;
 }
 
 /**
  * Derive status from the due date rather than trusting the persisted "new"
  * value. A bill is overdue beginning on the calendar day after its due date.
  */
-export function deriveBillStatus(bill, { asOf = new Date(), lastPayment = null } = {}) {
+export function deriveBillStatus(bill, {
+  asOf = new Date(),
+  lastPayment = null,
+  submittedPayment = null,
+} = {}) {
   const dueDate = dateOnly(bill.nextDue);
   const today = dateOnly(asOf);
   const paidDate = dateOnly(lastPayment?.date ?? bill.lastPaid);
-  const paidThrough = dateOnly(bill.paidThrough);
 
   if (bill.inactive) return 'inactive';
   if (!dueDate) return bill.status ?? 'new';
+  if (submittedPayment) return 'submitted';
 
-  // Some creditors post a payment before the cycle's nominal due date. In
-  // that case paidThrough identifies the cycle settled by the payment.
-  if ((paidThrough && paidThrough >= dueDate) || (paidDate && paidDate >= dueDate)) return 'paid';
+  if (paidDate && paidDate >= dueDate) return 'paid';
   if (dueDate < today) return 'overdue';
 
   const daysUntilDue = Math.round((dueDate - today) / DAY_IN_MS);
@@ -65,13 +80,14 @@ export function deriveBillStatus(bill, { asOf = new Date(), lastPayment = null }
 /** Add statement payment data and a current status to every bill row. */
 export function enrichBills(bills, payments = [], options = {}) {
   return bills.map((bill) => {
-    const lastPayment = findLastPayment(bill, payments);
+    const lastPayment = findLastPayment(bill, payments, options);
+    const submittedPayment = findSubmittedPayment(bill, payments, options.asOf);
     const lastPaid = lastPayment?.date ?? bill.lastPaid ?? null;
 
     return {
       ...bill,
       lastPaid,
-      status: deriveBillStatus(bill, { ...options, lastPayment }),
+      status: deriveBillStatus(bill, { ...options, lastPayment, submittedPayment }),
     };
   });
 }

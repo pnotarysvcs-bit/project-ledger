@@ -22,15 +22,20 @@ test('a payment for the current cycle marks the bill paid', () => {
   assert.equal(deriveBillStatus(bill, { asOf, lastPayment }), 'paid');
 });
 
-test('a payment posted before its covered due date is not marked overdue', () => {
-  const bill = {
-    nextDue: '2026-07-06',
-    lastPaid: '2026-06-06',
-    paidThrough: '2026-07-06',
-    status: 'new',
-  };
+test('a submitted payment does not become last paid until the new month', () => {
+  const bill = { id: 'affirm', nextDue: '2026-07-06', lastPaid: '2026-06-06', status: 'new' };
+  const payments = [
+    { billId: 'affirm', date: '2026-07-06', postOn: '2026-08-01' },
+  ];
 
-  assert.equal(deriveBillStatus(bill, { asOf }), 'paid');
+  assert.deepEqual(
+    enrichBills([bill], payments, { asOf: '2026-07-31' })[0],
+    { ...bill, lastPaid: '2026-06-06', status: 'submitted' },
+  );
+  assert.deepEqual(
+    enrichBills([bill], payments, { asOf: '2026-08-01' })[0],
+    { ...bill, lastPaid: '2026-07-06', status: 'paid' },
+  );
 });
 
 test('latest imported payment is found by id or normalized payee', () => {
