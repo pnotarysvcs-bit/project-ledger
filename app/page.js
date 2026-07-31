@@ -1,21 +1,20 @@
 import { enrichBills } from '../src/bills.js';
 
 const bills = [
-  { id: 'wifi', payee: 'Wc†Wci Of Missouri', type: 'Personal', account: 'TCU', amount: 101.76, lastPaid: '2026-06-07', nextDue: '2026-08-07', status: 'new' },
-  { id: 'affirm', payee: 'Affirm', type: 'Personal', account: 'TCU', amount: 64.52, lastPaid: '2026-05-06', nextDue: '2026-08-05', status: 'new' },
-  { id: 'irs', payee: 'IRS installment', type: 'Personal', account: 'TCU', amount: 238, nextDue: '2026-07-15', status: 'new' },
-  { id: 'dor', payee: 'Missouri Dep of Rev', type: 'Personal', account: 'TCU', amount: 147.13, nextDue: '2026-07-26', status: 'new' },
+  { id: 'wci', payee: 'WCI of Missouri', frequency: 'Quarterly', type: 'Personal', account: 'TCU', amount: 101.76, lastPaid: '2026-06-07', nextDue: '2026-08-07', status: 'new' },
+  { id: 'affirm', payee: 'Affirm', frequency: 'Monthly', type: 'Personal', account: 'TCU', amount: 64.52, lastPaid: '2026-05-06', nextDue: '2026-08-05', status: 'new' },
+  { id: 'irs', payee: 'IRS installment', frequency: 'Monthly', type: 'Personal', account: 'TCU', amount: 238, nextDue: '2026-07-15', status: 'new' },
+  { id: 'dor', payee: 'Missouri Dept of Rev', frequency: 'Monthly', type: 'Personal', account: 'TCU', amount: 147.13, nextDue: '2026-07-26', status: 'new' },
 ];
 
-const payments = [
-  { billId: 'irs', date: '2026-06-15', amount: 238 },
-  { billId: 'dor', date: '2026-06-26', amount: 147.13 },
-];
+// No IRS or Missouri Department of Revenue payments were found in the last
+// three months of imported statements, so neither bill has a last-paid date.
+const payments = [];
 
 const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
 const displayDate = (date) => date
   ? new Intl.DateTimeFormat('en-US', { timeZone: 'UTC' }).format(new Date(`${date}T00:00:00Z`))
-  : '—';
+  : '-';
 
 export default function BillsPage() {
   const rows = enrichBills(bills, payments, { asOf: '2026-07-31' });
@@ -41,7 +40,7 @@ export default function BillsPage() {
             <thead><tr><th>Bill</th><th>Type</th><th>Account</th><th>Amount</th><th>Last paid</th><th>Next due</th><th>Status</th></tr></thead>
             <tbody>{rows.map((bill) => (
               <tr key={bill.id}>
-                <td><b>{bill.payee}</b><small>Monthly</small></td>
+                <td><b>{bill.payee}</b><small>{bill.frequency}</small></td>
                 <td>{bill.type}</td><td>{bill.account}</td><td>{money.format(bill.amount)}</td>
                 <td>{displayDate(bill.lastPaid)}</td><td>{displayDate(bill.nextDue)}</td>
                 <td><span className={`status ${bill.status}`}>{bill.status.replace('-', ' ')}</span></td>

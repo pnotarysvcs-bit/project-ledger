@@ -32,21 +32,17 @@ test('latest imported payment is found by id or normalized payee', () => {
   assert.equal(findLastPayment(bill, payments).date, '2026-06-26');
 });
 
-test('enrichment restores last payment while calculating overdue status', () => {
+test('overdue bills without imported payments keep an empty last-paid date', () => {
   const bills = [
     { id: 'irs', payee: 'IRS installment', nextDue: '2026-07-15', status: 'new' },
-    { id: 'dor', payee: 'Missouri Dep of Rev', nextDue: '2026-07-26', status: 'new' },
-  ];
-  const payments = [
-    { billId: 'irs', date: '2026-06-15', amount: 238 },
-    { billId: 'dor', date: '2026-06-26', amount: 147.13 },
+    { id: 'dor', payee: 'Missouri Dept of Rev', nextDue: '2026-07-26', status: 'new' },
   ];
 
   assert.deepEqual(
-    enrichBills(bills, payments, { asOf }).map(({ status, lastPaid }) => ({ status, lastPaid })),
+    enrichBills(bills, [], { asOf }).map(({ status, lastPaid }) => ({ status, lastPaid })),
     [
-      { status: 'overdue', lastPaid: '2026-06-15' },
-      { status: 'overdue', lastPaid: '2026-06-26' },
+      { status: 'overdue', lastPaid: null },
+      { status: 'overdue', lastPaid: null },
     ],
   );
 });
