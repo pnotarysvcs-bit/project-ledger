@@ -1,0 +1,25 @@
+name: Deployment readiness
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-application:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Verify deployable application is present
+        run: ./scripts/check-deploy-readiness.sh
+
+      - name: Test deployment-readiness guard
+        if: always()
+        run: ./tests/check-deploy-readiness.test.sh
