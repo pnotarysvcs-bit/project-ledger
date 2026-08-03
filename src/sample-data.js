@@ -30,8 +30,9 @@ export const SAMPLE_SAVINGS_GOALS = [
  * Accounts page stores a name, number, and kind but no balance.
  */
 export const SAMPLE_BALANCES = {
-  Checking: { amount: 2457.32, caption: 'Available', trend: [4, 6, 5, 8, 7, 9, 8] },
-  Savings: { amount: 8650, caption: 'Available', trend: [3, 4, 4, 5, 6, 6, 7] },
+  checking: { amount: 2457.32, caption: 'Available', trend: [4, 6, 5, 8, 7, 9, 8] },
+  savings: { amount: 8650, caption: 'Available', trend: [3, 4, 4, 5, 6, 6, 7] },
+  credit_card: { amount: 1245.78, caption: 'Current Balance', trend: [7, 6, 8, 5, 6, 4, 5] },
 };
 
 export const SAMPLE_TIP = 'Reconcile your accounts weekly to stay on track and avoid surprises.';

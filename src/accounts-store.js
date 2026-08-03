@@ -1,4 +1,4 @@
-import { toLastFour } from './accounts.js';
+import { ACCOUNT_KINDS, toLastFour } from './accounts.js';
 
 const STORAGE_KEY = 'project-ledger.accounts.v1';
 
@@ -39,18 +39,24 @@ export function migrateAccount(record) {
     return null;
   }
 
+  // Earlier builds stored capitalised labels ("Checking"); the account_type
+  // enum spells them lowercase.
+  const kind = String(record.kind).toLowerCase().replace(/[\s-]/g, '_');
+  if (!ACCOUNT_KINDS.includes(kind)) return null;
+
   return {
     id: record.id,
     name: record.name,
     institution: typeof record.institution === 'string' ? record.institution : '',
     lastFour,
-    kind: record.kind,
+    kind,
   };
 }
 
 /** True when any stored record still carries a pre-migration full number. */
 export function needsMigration(records = []) {
-  return records.some((record) => isRecord(record) && record.number !== undefined);
+  return records.some((record) => isRecord(record)
+    && (record.number !== undefined || !ACCOUNT_KINDS.includes(record.kind)));
 }
 
 export function loadAccounts() {

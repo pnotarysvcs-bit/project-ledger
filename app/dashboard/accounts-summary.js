@@ -47,10 +47,10 @@ export default function AccountsSummary() {
       {loaded && accounts.length > 0 && (
         <ul className="account-list">
           {sortAccounts(accounts).map((account) => {
-            const balance = SAMPLE_BALANCES[account.kind];
+            const balance = SAMPLE_BALANCES[account.kind] ?? SAMPLE_BALANCES.checking;
             return (
               <li key={account.id}>
-                <span className={`bubble ${account.kind.toLowerCase()}`} aria-hidden="true" />
+                <span className={`bubble ${account.kind}`} aria-hidden="true" />
                 <span className="account-name">
                   <b>{account.name}</b>
                   <small>{account.institution ? `${account.institution} ` : ''}{formatLastFour(account.lastFour)}</small>
@@ -59,7 +59,7 @@ export default function AccountsSummary() {
                   <b>{money.format(balance.amount)}</b>
                   <small>{balance.caption} <em>sample</em></small>
                 </span>
-                <Sparkline points={balance.trend} tone={account.kind.toLowerCase()} />
+                <Sparkline points={balance.trend} tone={account.kind} />
               </li>
             );
           })}

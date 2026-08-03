@@ -61,6 +61,7 @@ button.ghost:hover { background: #191b1b; }
 .empty { padding: 28px; color: #7f8a94; text-align: center; }
 .status.checking { color: #65b5ff; background: #142c42; border: 1px solid #27547b; }
 .status.savings { color: #ffd25c; background: #403311; }
+.status.credit_card { color: #da9bff; background: #2c1736; border: 1px solid #553068; }
 
 /* Dashboard */
 .page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
@@ -79,6 +80,7 @@ button.ghost:hover { background: #191b1b; }
 .bubble.purple { background: #6c4cf1; } .bubble.green, .bubble.good { background: #16a34a; }
 .bubble.amber, .bubble.warn { background: #d97706; } .bubble.red, .bubble.bad { background: #dc2626; }
 .bubble.blue, .bubble.checking { background: #2563eb; } .bubble.savings { background: #059669; }
+.bubble.credit_card { background: #7c3aed; }
 
 .widget-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; margin-bottom: 20px; align-items: start; }
 .widget { background: #171818; border: 1px solid #292b2c; border-radius: 12px; padding: 18px 20px; display: grid; gap: 14px; align-content: start; }
@@ -124,6 +126,7 @@ table.mini td:last-child, table.mini th:last-child { padding-right: 0; }
 .spark { flex: none; }
 .spark polyline { stroke: #16a34a; }
 .spark.checking polyline { stroke: #2563eb; }
+.spark.credit_card polyline { stroke: #a78bfa; }
 
 .goals li { display: grid; gap: 7px; }
 .goal-head { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; }

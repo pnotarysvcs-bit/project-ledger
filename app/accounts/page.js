@@ -6,13 +6,14 @@ import {
   ACCOUNT_KINDS,
   createAccount,
   formatLastFour,
+  labelForKind,
   sortAccounts,
   summarizeAccounts,
   validateAccount,
 } from '../../src/accounts.js';
 import { loadAccounts, saveAccounts } from '../../src/accounts-store.js';
 
-const EMPTY_FORM = { name: '', institution: '', lastFour: '', kind: 'Checking' };
+const EMPTY_FORM = { name: '', institution: '', lastFour: '', kind: 'checking' };
 
 export default function AccountsPage() {
   const [accounts, setAccounts] = useState([]);
@@ -65,6 +66,7 @@ export default function AccountsPage() {
         <article><span>Accounts</span><strong>{summary.total}</strong><small>Saved on this device</small></article>
         <article><span>Checking</span><strong className="blue">{summary.checking}</strong><small>Everyday accounts</small></article>
         <article><span>Savings</span><strong className="amber">{summary.savings}</strong><small>Reserve accounts</small></article>
+        <article><span>Credit Cards</span><strong className="red">{summary.creditCard}</strong><small>Revolving balances</small></article>
       </section>
 
       <section className="panel">
@@ -124,7 +126,7 @@ export default function AccountsPage() {
                     checked={form.kind === kind}
                     onChange={update('kind')}
                   />
-                  {kind}
+                  {labelForKind(kind)}
                 </label>
               ))}
             </div>
@@ -153,7 +155,7 @@ export default function AccountsPage() {
                 <tr key={account.id}>
                   <td><b>{account.name}</b></td>
                   <td>{account.institution || '-'}</td>
-                  <td><span className={`status ${account.kind.toLowerCase()}`}>{account.kind}</span></td>
+                  <td><span className={`status ${account.kind}`}>{labelForKind(account.kind)}</span></td>
                   <td>{formatLastFour(account.lastFour)}</td>
                   <td>
                     <button

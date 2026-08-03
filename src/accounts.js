@@ -9,9 +9,17 @@
  * reused by any view that needs to render or check an account.
  */
 
-// Mirrors accounts.account_type. The database enum is the authority; extend
-// this list once its values are confirmed.
-export const ACCOUNT_KINDS = ['Checking', 'Savings'];
+// Mirrors the accounts.account_type enum exactly. Values are stored as the
+// database spells them; labels are presentation only.
+export const ACCOUNT_KINDS = ['checking', 'savings', 'credit_card'];
+
+export const ACCOUNT_KIND_LABELS = {
+  checking: 'Checking',
+  savings: 'Savings',
+  credit_card: 'Credit Card',
+};
+
+export const labelForKind = (kind) => ACCOUNT_KIND_LABELS[kind] ?? kind;
 
 const LAST_FOUR_LENGTH = 4;
 const MAX_TEXT_LENGTH = 60;
@@ -72,7 +80,7 @@ export function validateAccount(input = {}, existingAccounts = []) {
   }
 
   if (!ACCOUNT_KINDS.includes(kind)) {
-    errors.kind = 'Choose checking or savings.';
+    errors.kind = 'Choose an account type.';
   }
 
   return { valid: Object.keys(errors).length === 0, errors };
@@ -93,7 +101,7 @@ export function createAccount(input, { id = null } = {}) {
   };
 }
 
-/** Checking first, then savings, alphabetical within each group. */
+/** Grouped in enum order, alphabetical by name within each group. */
 export function sortAccounts(accounts = []) {
   return [...accounts].sort((left, right) => {
     if (left.kind !== right.kind) {
@@ -104,9 +112,12 @@ export function sortAccounts(accounts = []) {
 }
 
 export function summarizeAccounts(accounts = []) {
+  const countOf = (kind) => accounts.filter((account) => account.kind === kind).length;
+
   return {
     total: accounts.length,
-    checking: accounts.filter(({ kind }) => kind === 'Checking').length,
-    savings: accounts.filter(({ kind }) => kind === 'Savings').length,
+    checking: countOf('checking'),
+    savings: countOf('savings'),
+    creditCard: countOf('credit_card'),
   };
 }
