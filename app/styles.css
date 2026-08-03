@@ -62,6 +62,78 @@ button.ghost:hover { background: #191b1b; }
 .status.checking { color: #65b5ff; background: #142c42; border: 1px solid #27547b; }
 .status.savings { color: #ffd25c; background: #403311; }
 
+/* Dashboard */
+.page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin-bottom: 20px; }
+.page-head h1 { margin-bottom: 6px; }
+.page-head .lede { margin: 0; }
+.head-actions { display: flex; align-items: center; gap: 10px; }
+.month-pill { padding: 10px 14px; border: 1px solid #292b2c; border-radius: 9px; background: #171818; font-size: 14px; }
+
+.stat-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.stat { position: relative; padding: 18px 16px; display: grid; gap: 8px; background: #171818; border: 1px solid #292b2c; border-radius: 12px; }
+.stat span:not(.bubble) { color: #bac4cc; font-size: 13px; }
+.stat strong { font-size: 24px; color: #f4f7f7; }
+.stat small { color: #7f8a94; font-size: 12px; }
+
+.bubble { width: 30px; height: 30px; border-radius: 50%; display: inline-block; flex: 0 0 30px; }
+.bubble.purple { background: #6c4cf1; } .bubble.green, .bubble.good { background: #16a34a; }
+.bubble.amber, .bubble.warn { background: #d97706; } .bubble.red, .bubble.bad { background: #dc2626; }
+.bubble.blue, .bubble.checking { background: #2563eb; } .bubble.savings { background: #059669; }
+
+.widget-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 12px; margin-bottom: 20px; align-items: start; }
+.widget { background: #171818; border: 1px solid #292b2c; border-radius: 12px; padding: 18px 20px; display: grid; gap: 14px; align-content: start; }
+.widget > header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.widget > header strong { color: #f4f7f7; font-size: 15px; }
+.widget a { color: #00d6a3; text-decoration: none; font-size: 13px; }
+.widget a:hover { text-decoration: underline; }
+.widget > footer { display: grid; gap: 8px; font-size: 13px; }
+.muted { color: #7f8a94; font-size: 13px; margin: 0; }
+.badge-sample { padding: 3px 9px; border-radius: 99px; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: #ffbd00; background: #362b0d; border: 1px solid #5c4a15; }
+
+table.mini { min-width: 0; }
+table.mini th { padding: 0 0 8px; }
+table.mini td { padding: 10px 10px 10px 0; font-size: 13px; }
+table.mini td:last-child, table.mini th:last-child { padding-right: 0; }
+
+.overview { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+.legend { list-style: none; margin: 0; padding: 0; display: grid; gap: 11px; flex: 1 1 150px; }
+.legend li { display: flex; align-items: center; gap: 9px; font-size: 13px; }
+.dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
+.dot.paid { background: #22c55e; } .dot.pending { background: #f59e0b; }
+.dot.overdue { background: #ef4444; } .dot.future { background: #3b82f6; }
+.legend-label { color: #bac4cc; flex: 1; }
+.legend-value { text-align: right; display: grid; }
+.legend-value small { color: #7f8a94; font-size: 11px; }
+.ring-wrap { flex: 0 0 130px; }
+.ring { width: 130px; height: 130px; }
+.ring-track { fill: none; stroke: #262829; stroke-width: 14; }
+.ring-seg { fill: none; stroke-width: 14; transform: rotate(-90deg); transform-origin: 65px 65px; }
+.ring-seg.paid { stroke: #22c55e; } .ring-seg.pending { stroke: #f59e0b; }
+.ring-seg.overdue { stroke: #ef4444; } .ring-seg.future { stroke: #3b82f6; }
+.ring-value { fill: #f4f7f7; font-size: 22px; font-weight: bold; text-anchor: middle; }
+.ring-caption { fill: #7f8a94; font-size: 11px; text-anchor: middle; }
+
+.rows, .activity, .account-list, .goals { list-style: none; margin: 0; padding: 0; display: grid; gap: 13px; }
+.rows li { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; color: #bac4cc; }
+.rows li.ruled { border-top: 1px solid #292b2c; padding-top: 13px; }
+.activity li, .account-list li { display: flex; align-items: center; gap: 11px; }
+.activity-body, .account-name { flex: 1; display: grid; min-width: 0; }
+.activity-body small, .account-name small, .account-balance small { color: #7f8a94; font-size: 12px; }
+.activity-meta, .account-balance { display: grid; text-align: right; }
+.account-balance em { font-style: normal; color: #ffbd00; }
+.spark { flex: none; }
+.spark polyline { stroke: #16a34a; }
+.spark.checking polyline { stroke: #2563eb; }
+
+.goals li { display: grid; gap: 7px; }
+.goal-head { display: flex; justify-content: space-between; gap: 10px; font-size: 14px; }
+.goal-head small { color: #7f8a94; }
+.goal-bar { display: flex; align-items: center; gap: 10px; }
+.goal-bar .progress-track { flex: 1; }
+.goal-bar small { color: #7f8a94; font-size: 12px; }
+.progress-fill.blue { background: #3b82f6; } .progress-fill.green { background: #22c55e; }
+.progress-fill.purple { background: #8b5cf6; }
+
 @media (max-width: 800px) {
   .shell { flex-direction: column; }
   .sidebar { flex: none; border-right: 0; border-bottom: 1px solid #292b2c; }
