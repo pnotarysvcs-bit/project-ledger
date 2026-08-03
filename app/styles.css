@@ -12,7 +12,14 @@ h1 { margin: 0 0 10px; font-size: 30px; }
 .summary strong { color: #00d6a3; font-size: 24px; }
 .summary small, td small { color: #7f8a94; }
 .summary .blue { color: #4597ff; }.summary .amber { color: #ffbd00; }.summary .red { color: #ff4754; }
-.panel { overflow: hidden; }
+.progress-card { background: #171818; border: 1px solid #292b2c; border-radius: 12px; padding: 18px 20px; margin-bottom: 20px; display: grid; gap: 11px; }
+.progress-card header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.progress-card strong { color: #00d6a3; font-size: 16px; }
+.progress-card span, .progress-card small { color: #a9b2bb; font-size: 14px; }
+.progress-track { height: 10px; border-radius: 99px; background: #262829; overflow: hidden; }
+.progress-fill { height: 100%; border-radius: 99px; background: #00bd8c; transition: width 240ms ease; }
+.alert { margin: 0 0 20px; padding: 12px 16px; border-radius: 10px; color: #ff6872; background: #3d171c; border: 1px solid #6b2830; font-size: 14px; }
+.panel { overflow: hidden; margin-bottom: 20px; }
 .panel header { height: 55px; padding: 0 20px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #292b2c; color: #00d6a3; }
 button { border: 0; border-radius: 9px; background: #00bd8c; color: #001710; padding: 10px 16px; font-size: 14px; }
 .table-wrap { overflow-x: auto; }
@@ -26,4 +33,6 @@ td b, td small { display: block; } td small { margin-top: 6px; }
 .status.paid { color: #16e1ab; background: #12372d; }
 .status.completed { color: #65b5ff; background: #142c42; border: 1px solid #27547b; }
 .status.due-soon { color: #ffd25c; background: #403311; }
+.status.upcoming { color: #9fb0bd; background: #22282d; border: 1px solid #38424b; }
+.status.inactive { color: #7f8a94; background: #1d1f20; border: 1px solid #2f3335; }
 @media (max-width: 800px) { .summary { grid-template-columns: repeat(2, 1fr); } }
