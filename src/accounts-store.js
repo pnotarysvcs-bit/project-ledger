@@ -1,11 +1,13 @@
+import { toLastFour } from './accounts.js';
+
 const STORAGE_KEY = 'project-ledger.accounts.v1';
 
 /**
  * Browser-local persistence for saved bank accounts.
  *
- * There is no backend yet, so accounts live in localStorage and stay on the
- * device that entered them. Every read is defensive: a corrupt or hand-edited
- * value must not take the page down.
+ * There is no backend wired yet, so accounts live in localStorage and stay on
+ * the device that entered them. Every read is defensive: a corrupt or
+ * hand-edited value must not take the page down.
  */
 
 function storage() {
@@ -18,13 +20,37 @@ function storage() {
   }
 }
 
-function isAccountRecord(value) {
-  return value
-    && typeof value === 'object'
-    && typeof value.id === 'string'
-    && typeof value.name === 'string'
-    && typeof value.number === 'string'
-    && typeof value.kind === 'string';
+function isRecord(value) {
+  return value && typeof value === 'object' && typeof value.id === 'string';
+}
+
+/**
+ * Bring a stored record up to the current shape.
+ *
+ * Earlier builds stored a whole account number under `number`. Those are
+ * reduced to their last four digits here and the full value is dropped, so
+ * loading the page is enough to clear it from the device.
+ */
+export function migrateAccount(record) {
+  if (!isRecord(record)) return null;
+
+  const lastFour = toLastFour(record.lastFour ?? record.number);
+  if (!lastFour || typeof record.name !== 'string' || typeof record.kind !== 'string') {
+    return null;
+  }
+
+  return {
+    id: record.id,
+    name: record.name,
+    institution: typeof record.institution === 'string' ? record.institution : '',
+    lastFour,
+    kind: record.kind,
+  };
+}
+
+/** True when any stored record still carries a pre-migration full number. */
+export function needsMigration(records = []) {
+  return records.some((record) => isRecord(record) && record.number !== undefined);
 }
 
 export function loadAccounts() {
@@ -33,7 +59,14 @@ export function loadAccounts() {
 
   try {
     const parsed = JSON.parse(store.getItem(STORAGE_KEY) ?? '[]');
-    return Array.isArray(parsed) ? parsed.filter(isAccountRecord) : [];
+    if (!Array.isArray(parsed)) return [];
+
+    const migrated = parsed.map(migrateAccount).filter(Boolean);
+
+    // Rewrite immediately so a discarded full number does not linger on disk.
+    if (needsMigration(parsed)) saveAccounts(migrated);
+
+    return migrated;
   } catch {
     return [];
   }

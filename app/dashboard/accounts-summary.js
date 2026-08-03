@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 
-import { maskAccountNumber, sortAccounts } from '../../src/accounts.js';
+import { formatLastFour, sortAccounts } from '../../src/accounts.js';
 import { loadAccounts } from '../../src/accounts-store.js';
 import { SAMPLE_BALANCES } from '../../src/sample-data.js';
 
@@ -53,7 +53,7 @@ export default function AccountsSummary() {
                 <span className={`bubble ${account.kind.toLowerCase()}`} aria-hidden="true" />
                 <span className="account-name">
                   <b>{account.name}</b>
-                  <small>{maskAccountNumber(account.number)}</small>
+                  <small>{account.institution ? `${account.institution} ` : ''}{formatLastFour(account.lastFour)}</small>
                 </span>
                 <span className="account-balance">
                   <b>{money.format(balance.amount)}</b>

@@ -5,14 +5,14 @@ import { useEffect, useState } from 'react';
 import {
   ACCOUNT_KINDS,
   createAccount,
-  maskAccountNumber,
+  formatLastFour,
   sortAccounts,
   summarizeAccounts,
   validateAccount,
 } from '../../src/accounts.js';
 import { loadAccounts, saveAccounts } from '../../src/accounts-store.js';
 
-const EMPTY_FORM = { name: '', number: '', kind: 'Checking' };
+const EMPTY_FORM = { name: '', institution: '', lastFour: '', kind: 'Checking' };
 
 export default function AccountsPage() {
   const [accounts, setAccounts] = useState([]);
@@ -59,7 +59,7 @@ export default function AccountsPage() {
     <>
       <p className="eyebrow">Bank accounts</p>
       <h1>Accounts</h1>
-      <p className="lede">Add the checking and savings accounts your bills are paid from. Account numbers are stored on this device only and are shown as the last four digits.</p>
+      <p className="lede">Add the checking and savings accounts your bills are paid from. Only the last four digits are captured — the full account number is never stored.</p>
 
       <section className="summary" aria-label="Account summary">
         <article><span>Accounts</span><strong>{summary.total}</strong><small>Saved on this device</small></article>
@@ -84,18 +84,32 @@ export default function AccountsPage() {
           </div>
 
           <div className="field">
-            <label htmlFor="account-number">Account number</label>
+            <label htmlFor="account-institution">Institution</label>
             <input
-              id="account-number"
-              value={form.number}
-              onChange={update('number')}
+              id="account-institution"
+              value={form.institution}
+              onChange={update('institution')}
+              placeholder="TCU"
+              aria-invalid={Boolean(errors.institution)}
+              aria-describedby={errors.institution ? 'account-institution-error' : undefined}
+            />
+            {errors.institution && <small id="account-institution-error" className="error">{errors.institution}</small>}
+          </div>
+
+          <div className="field">
+            <label htmlFor="account-last-four">Last four digits</label>
+            <input
+              id="account-last-four"
+              value={form.lastFour}
+              onChange={update('lastFour')}
               inputMode="numeric"
               autoComplete="off"
-              placeholder="1234567890"
-              aria-invalid={Boolean(errors.number)}
-              aria-describedby={errors.number ? 'account-number-error' : undefined}
+              maxLength={4}
+              placeholder="5678"
+              aria-invalid={Boolean(errors.lastFour)}
+              aria-describedby={errors.lastFour ? 'account-last-four-error' : undefined}
             />
-            {errors.number && <small id="account-number-error" className="error">{errors.number}</small>}
+            {errors.lastFour && <small id="account-last-four-error" className="error">{errors.lastFour}</small>}
           </div>
 
           <div className="field">
@@ -126,20 +140,21 @@ export default function AccountsPage() {
         <div className="table-wrap">
           <table className="accounts-table">
             <thead>
-              <tr><th>Account</th><th>Type</th><th>Number</th><th>Actions</th></tr>
+              <tr><th>Account</th><th>Institution</th><th>Type</th><th>Number</th><th>Actions</th></tr>
             </thead>
             <tbody>
               {!loaded && (
-                <tr><td colSpan={4} className="empty">Loading accounts…</td></tr>
+                <tr><td colSpan={5} className="empty">Loading accounts…</td></tr>
               )}
               {loaded && accounts.length === 0 && (
-                <tr><td colSpan={4} className="empty">No accounts yet. Add one above.</td></tr>
+                <tr><td colSpan={5} className="empty">No accounts yet. Add one above.</td></tr>
               )}
               {sortAccounts(accounts).map((account) => (
                 <tr key={account.id}>
                   <td><b>{account.name}</b></td>
+                  <td>{account.institution || '-'}</td>
                   <td><span className={`status ${account.kind.toLowerCase()}`}>{account.kind}</span></td>
-                  <td>{maskAccountNumber(account.number)}</td>
+                  <td>{formatLastFour(account.lastFour)}</td>
                   <td>
                     <button
                       type="button"

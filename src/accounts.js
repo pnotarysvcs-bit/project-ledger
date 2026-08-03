@@ -1,55 +1,74 @@
 /**
  * Bank accounts — validation and display rules.
  *
+ * Modelled on the `accounts` table, which stores `last_four` rather than a
+ * whole account number. Only the last four digits are ever captured, so a full
+ * account number never reaches the client or storage in the first place.
+ *
  * Kept free of storage and React so the rules can be tested directly and
  * reused by any view that needs to render or check an account.
  */
 
+// Mirrors accounts.account_type. The database enum is the authority; extend
+// this list once its values are confirmed.
 export const ACCOUNT_KINDS = ['Checking', 'Savings'];
 
-const MIN_DIGITS = 4;
-const MAX_DIGITS = 17;
-const MAX_NAME_LENGTH = 60;
+const LAST_FOUR_LENGTH = 4;
+const MAX_TEXT_LENGTH = 60;
 
 /** Strip the spaces and dashes people paste in from a statement or cheque. */
-export function normalizeAccountNumber(number) {
-  return String(number ?? '').replace(/[\s-]/g, '');
+export function normalizeDigits(value) {
+  return String(value ?? '').replace(/[\s-]/g, '');
 }
 
 /**
- * Render an account number as the last four digits only.
+ * Reduce whatever was typed to the last four digits.
  *
- * The full number is never displayed back to the page. A number too short to
- * have a meaningful tail is masked completely rather than partially revealed.
+ * Accepts a full account number so that pasting one still works, but keeps
+ * only the tail — the rest is discarded before it can be stored.
  */
-export function maskAccountNumber(number) {
-  const digits = normalizeAccountNumber(number);
+export function toLastFour(value) {
+  const digits = normalizeDigits(value);
+  return digits.slice(-LAST_FOUR_LENGTH);
+}
+
+/** Render stored digits as a masked account reference. */
+export function formatLastFour(lastFour) {
+  const digits = normalizeDigits(lastFour);
   if (!digits) return '';
-  if (digits.length <= MIN_DIGITS) return '•'.repeat(digits.length);
-  return `••••${digits.slice(-4)}`;
+  return `••••${digits.slice(-LAST_FOUR_LENGTH)}`;
 }
 
 export function validateAccount(input = {}, existingAccounts = []) {
   const name = String(input.name ?? '').trim();
-  const digits = normalizeAccountNumber(input.number);
+  const institution = String(input.institution ?? '').trim();
+  const lastFour = normalizeDigits(input.lastFour);
   const kind = input.kind ?? '';
   const errors = {};
 
   if (!name) {
     errors.name = 'Enter an account name.';
-  } else if (name.length > MAX_NAME_LENGTH) {
-    errors.name = `Keep the name under ${MAX_NAME_LENGTH} characters.`;
+  } else if (name.length > MAX_TEXT_LENGTH) {
+    errors.name = `Keep the name under ${MAX_TEXT_LENGTH} characters.`;
   }
 
-  if (!digits) {
-    errors.number = 'Enter an account number.';
-  } else if (!/^\d+$/.test(digits)) {
-    errors.number = 'Account numbers contain digits only.';
-  } else if (digits.length < MIN_DIGITS || digits.length > MAX_DIGITS) {
-    errors.number = `Account numbers are ${MIN_DIGITS} to ${MAX_DIGITS} digits.`;
-  } else if (existingAccounts.some((account) => account.number === digits
+  if (!institution) {
+    errors.institution = 'Enter the bank or institution.';
+  } else if (institution.length > MAX_TEXT_LENGTH) {
+    errors.institution = `Keep the institution under ${MAX_TEXT_LENGTH} characters.`;
+  }
+
+  if (!lastFour) {
+    errors.lastFour = 'Enter the last four digits.';
+  } else if (!/^\d+$/.test(lastFour)) {
+    errors.lastFour = 'Digits only.';
+  } else if (lastFour.length !== LAST_FOUR_LENGTH) {
+    errors.lastFour = 'Enter exactly four digits.';
+  } else if (existingAccounts.some((account) => account.lastFour === lastFour
+    && account.institution?.toLocaleLowerCase() === institution.toLocaleLowerCase()
     && account.id !== input.id)) {
-    errors.number = 'That account number is already saved.';
+    // Last four alone is not unique across banks, so match on the pair.
+    errors.lastFour = 'That account is already saved for this institution.';
   }
 
   if (!ACCOUNT_KINDS.includes(kind)) {
@@ -59,17 +78,17 @@ export function validateAccount(input = {}, existingAccounts = []) {
   return { valid: Object.keys(errors).length === 0, errors };
 }
 
-/**
- * Build a stored account record from validated form input.
- *
- * The number is held normalized so that "1234-5678" and "12345678" cannot be
- * saved as two different accounts.
- */
+/** Build a stored account record from validated form input. */
 export function createAccount(input, { id = null } = {}) {
+  // Truncate rather than normalize: if a whole number reaches here despite
+  // validation, only its tail is allowed into storage.
+  const lastFour = toLastFour(input.lastFour);
+
   return {
-    id: id ?? `acct_${normalizeAccountNumber(input.number).slice(-4)}_${Date.now().toString(36)}`,
+    id: id ?? `acct_${lastFour}_${Date.now().toString(36)}`,
     name: String(input.name ?? '').trim(),
-    number: normalizeAccountNumber(input.number),
+    institution: String(input.institution ?? '').trim(),
+    lastFour,
     kind: input.kind,
   };
 }
