@@ -1,4 +1,6 @@
-const PAID_STATUSES = new Set(['paid', 'completed']);
+// 'submitted' is a payment sent but not yet posted. It counts as settled for
+// budget purposes; see the note in src/bills.js.
+const PAID_STATUSES = new Set(['paid', 'submitted']);
 
 function monthKey(value) {
   const date = value instanceof Date

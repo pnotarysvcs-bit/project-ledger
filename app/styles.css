@@ -40,7 +40,7 @@ td b, td small { display: block; } td small { margin-top: 6px; }
 .status.overdue { color: #ff6872; background: #3d171c; border: 1px solid #6b2830; }
 .status.new { color: #da57ff; background: #2c1736; border: 1px solid #553068; }
 .status.paid { color: #16e1ab; background: #12372d; }
-.status.completed { color: #65b5ff; background: #142c42; border: 1px solid #27547b; }
+.status.submitted { color: #65b5ff; background: #142c42; border: 1px solid #27547b; }
 .status.due-soon { color: #ffd25c; background: #403311; }
 .status.upcoming { color: #9fb0bd; background: #22282d; border: 1px solid #38424b; }
 .status.inactive { color: #7f8a94; background: #1d1f20; border: 1px solid #2f3335; }

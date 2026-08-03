@@ -37,7 +37,7 @@ test('the Affirm payment rolls over to last-paid once it posts', () => {
   const afterPosting = getBillsMaster({ asOf: '2026-08-03' })
     .find(({ id }) => id === 'affirm');
 
-  assert.equal(beforePosting.status, 'completed');
+  assert.equal(beforePosting.status, 'submitted');
   assert.equal(beforePosting.lastPaid, '2026-06-06');
 
   assert.equal(afterPosting.lastPaid, '2026-07-06');
@@ -49,7 +49,7 @@ test('paid and remaining always add up to the total', () => {
     { id: 'a', amount: 100, status: 'paid' },
     { id: 'b', amount: 50, status: 'overdue' },
     { id: 'c', amount: 25, status: 'due-soon' },
-    { id: 'd', amount: 10, status: 'completed' },
+    { id: 'd', amount: 10, status: 'submitted' },
   ];
 
   const summary = summarizeBills(rows);

@@ -16,10 +16,10 @@ test('progress counts only bills due in the asOf month', () => {
   assert.equal(progress.total, 100);
 });
 
-test('paid and completed bills both count toward progress', () => {
+test('paid and submitted bills both count toward progress', () => {
   const rows = [
     { id: 'a', amount: 100, nextDue: '2026-08-07', status: 'paid' },
-    { id: 'b', amount: 100, nextDue: '2026-08-15', status: 'completed' },
+    { id: 'b', amount: 100, nextDue: '2026-08-15', status: 'submitted' },
     { id: 'c', amount: 200, nextDue: '2026-08-20', status: 'due-soon' },
   ];
 
