@@ -1,4 +1,5 @@
 import './styles.css';
+import Nav from './nav.js';
 
 export const metadata = {
   title: 'Project Ledger',
@@ -8,7 +9,12 @@ export const metadata = {
 export default function RootLayout({ children }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        <div className="shell">
+          <Nav />
+          <main>{children}</main>
+        </div>
+      </body>
     </html>
   );
 }

@@ -19,7 +19,7 @@ export default function BillsPage() {
   const progress = calculateMonthlyProgress(rows, { asOf });
 
   return (
-    <main>
+    <>
       <p className="eyebrow">Bill management</p>
       <h1>{monthLabel.format(asOf)} Master Bills</h1>
       <p className="lede">Review every personal and business bill in one place. Amounts and due dates are projected from bill payments found in imported statements.</p>
@@ -73,6 +73,6 @@ export default function BillsPage() {
           </div>
         </section>
       ))}
-    </main>
+    </>
   );
 }
