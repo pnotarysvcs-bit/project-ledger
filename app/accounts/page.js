@@ -5,7 +5,6 @@ import { useEffect, useState } from 'react';
 import {
   ACCOUNT_KINDS,
   createAccount,
-  formatLastFour,
   labelForKind,
   sortAccounts,
   summarizeAccounts,
@@ -13,7 +12,7 @@ import {
 } from '../../src/accounts.js';
 import { loadAccounts, saveAccounts } from '../../src/accounts-store.js';
 
-const EMPTY_FORM = { name: '', institution: '', lastFour: '', kind: 'checking' };
+const EMPTY_FORM = { institution: '', kind: 'checking' };
 
 export default function AccountsPage() {
   const [accounts, setAccounts] = useState([]);
@@ -21,7 +20,6 @@ export default function AccountsPage() {
   const [errors, setErrors] = useState({});
   const [loaded, setLoaded] = useState(false);
 
-  // Read after mount: localStorage does not exist during server rendering.
   useEffect(() => {
     setAccounts(loadAccounts());
     setLoaded(true);
@@ -42,16 +40,19 @@ export default function AccountsPage() {
     }
 
     const next = [...accounts, createAccount(form)];
+    if (!saveAccounts(next)) {
+      setErrors({ form: 'The account could not be saved. Please try again.' });
+      return;
+    }
+
     setAccounts(next);
-    saveAccounts(next);
     setForm(EMPTY_FORM);
     setErrors({});
   };
 
   const handleRemove = (id) => {
     const next = accounts.filter((account) => account.id !== id);
-    setAccounts(next);
-    saveAccounts(next);
+    if (saveAccounts(next)) setAccounts(next);
   };
 
   const summary = summarizeAccounts(accounts);
@@ -60,58 +61,28 @@ export default function AccountsPage() {
     <>
       <p className="eyebrow">Bank accounts</p>
       <h1>Accounts</h1>
-      <p className="lede">Add the checking and savings accounts your bills are paid from. Only the last four digits are captured — the full account number is never stored.</p>
+      <p className="lede">Add the banks used for your bills and identify each account as checking or savings. Account numbers are not collected.</p>
 
       <section className="summary" aria-label="Account summary">
-        <article><span>Accounts</span><strong>{summary.total}</strong><small>Saved on this device</small></article>
-        <article><span>Checking</span><strong className="blue">{summary.checking}</strong><small>Everyday accounts</small></article>
-        <article><span>Savings</span><strong className="amber">{summary.savings}</strong><small>Reserve accounts</small></article>
-        <article><span>Credit Cards</span><strong className="red">{summary.creditCard}</strong><small>Revolving balances</small></article>
+        <article><span>Accounts</span><strong>{summary.total}</strong><small>Saved accounts</small></article>
+        <article><span>Checking</span><strong className="blue">{summary.checking}</strong><small>Checking accounts</small></article>
+        <article><span>Savings</span><strong className="amber">{summary.savings}</strong><small>Savings accounts</small></article>
       </section>
 
       <section className="panel">
         <header><strong>Add account</strong></header>
         <form className="account-form" onSubmit={handleSubmit} noValidate>
           <div className="field">
-            <label htmlFor="account-name">Account name</label>
-            <input
-              id="account-name"
-              value={form.name}
-              onChange={update('name')}
-              placeholder="TCU Checking"
-              aria-invalid={Boolean(errors.name)}
-              aria-describedby={errors.name ? 'account-name-error' : undefined}
-            />
-            {errors.name && <small id="account-name-error" className="error">{errors.name}</small>}
-          </div>
-
-          <div className="field">
-            <label htmlFor="account-institution">Institution</label>
+            <label htmlFor="account-institution">Bank name</label>
             <input
               id="account-institution"
               value={form.institution}
               onChange={update('institution')}
-              placeholder="TCU"
+              placeholder="Together Credit Union"
               aria-invalid={Boolean(errors.institution)}
               aria-describedby={errors.institution ? 'account-institution-error' : undefined}
             />
             {errors.institution && <small id="account-institution-error" className="error">{errors.institution}</small>}
-          </div>
-
-          <div className="field">
-            <label htmlFor="account-last-four">Last four digits</label>
-            <input
-              id="account-last-four"
-              value={form.lastFour}
-              onChange={update('lastFour')}
-              inputMode="numeric"
-              autoComplete="off"
-              maxLength={4}
-              placeholder="5678"
-              aria-invalid={Boolean(errors.lastFour)}
-              aria-describedby={errors.lastFour ? 'account-last-four-error' : undefined}
-            />
-            {errors.lastFour && <small id="account-last-four-error" className="error">{errors.lastFour}</small>}
           </div>
 
           <div className="field">
@@ -133,6 +104,7 @@ export default function AccountsPage() {
             {errors.kind && <small className="error">{errors.kind}</small>}
           </div>
 
+          {errors.form && <p className="error">{errors.form}</p>}
           <button type="submit">+ Add Account</button>
         </form>
       </section>
@@ -142,27 +114,25 @@ export default function AccountsPage() {
         <div className="table-wrap">
           <table className="accounts-table">
             <thead>
-              <tr><th>Account</th><th>Institution</th><th>Type</th><th>Number</th><th>Actions</th></tr>
+              <tr><th>Bank</th><th>Account Type</th><th>Actions</th></tr>
             </thead>
             <tbody>
               {!loaded && (
-                <tr><td colSpan={5} className="empty">Loading accounts…</td></tr>
+                <tr><td colSpan={3} className="empty">Loading accounts…</td></tr>
               )}
               {loaded && accounts.length === 0 && (
-                <tr><td colSpan={5} className="empty">No accounts yet. Add one above.</td></tr>
+                <tr><td colSpan={3} className="empty">No accounts yet. Add one above.</td></tr>
               )}
               {sortAccounts(accounts).map((account) => (
                 <tr key={account.id}>
-                  <td><b>{account.name}</b></td>
-                  <td>{account.institution || '-'}</td>
+                  <td><b>{account.institution}</b></td>
                   <td><span className={`status ${account.kind}`}>{labelForKind(account.kind)}</span></td>
-                  <td>{formatLastFour(account.lastFour)}</td>
                   <td>
                     <button
                       type="button"
                       className="ghost"
                       onClick={() => handleRemove(account.id)}
-                      aria-label={`Remove ${account.name}`}
+                      aria-label={`Remove ${account.institution} ${labelForKind(account.kind)} account`}
                     >
                       Remove
                     </button>
