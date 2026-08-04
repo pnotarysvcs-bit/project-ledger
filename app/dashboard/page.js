@@ -6,14 +6,19 @@ import {
   getStatusBreakdown,
   toRingSegments,
 } from '../../src/dashboard.js';
+import {
+  dateForDashboardMonth,
+  labelForDashboardMonth,
+  resolveDashboardMonth,
+} from '../../src/dashboard-months.js';
 import { SAMPLE_CASH_FLOW, SAMPLE_SAVINGS_GOALS, SAMPLE_TIP } from '../../src/sample-data.js';
 import AccountsSummary from './accounts-summary.js';
+import MonthSelector from './month-selector.js';
 
-// Every figure is relative to "today", so the page is rendered per request.
+// Every figure is relative to the selected reporting month, so the page is rendered per request.
 export const dynamic = 'force-dynamic';
 
 const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
-const monthLabel = new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', month: 'long', year: 'numeric' });
 const dayLabel = new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric', weekday: 'short' });
 const shortDate = new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric', year: 'numeric' });
 
@@ -35,32 +40,33 @@ function SampleBadge() {
   return <span className="badge-sample" title="Placeholder data — not from the ledger">Sample</span>;
 }
 
-export default function DashboardPage() {
-  const asOf = new Date();
-  const rows = getBillsMaster({ asOf });
+export default async function DashboardPage({ searchParams }) {
+  const params = await searchParams;
+  const now = new Date();
+  const selectedMonth = resolveDashboardMonth(params?.month, now);
+  const reportingDate = dateForDashboardMonth(selectedMonth);
+  const rows = getBillsMaster({ asOf: reportingDate });
 
-  const summary = getMonthSummary(rows, { asOf });
-  const dueSoon = getDueSoon(rows, { asOf, days: 7 });
-  const breakdown = getStatusBreakdown(rows, { asOf });
+  const summary = getMonthSummary(rows, { asOf: reportingDate });
+  const dueSoon = getDueSoon(getBillsMaster({ asOf: now }), { asOf: now, days: 7 });
+  const breakdown = getStatusBreakdown(rows, { asOf: reportingDate });
   const activity = getRecentActivity(rows);
   const segments = toRingSegments(breakdown, RING_CIRCUMFERENCE);
-
-  const month = monthLabel.format(asOf);
+  const month = labelForDashboardMonth(selectedMonth);
 
   return (
     <>
       <header className="page-head">
         <div>
-          <h1>{greeting(asOf)}, Kim! <span aria-hidden="true">👋</span></h1>
+          <h1>{greeting(now)}, Kim! <span aria-hidden="true">👋</span></h1>
           <p className="lede">Here&rsquo;s what needs your attention today.</p>
         </div>
         <div className="head-actions">
-          <span className="month-pill">{month}</span>
+          <MonthSelector selectedMonth={selectedMonth} />
           <button type="button">+ Add Transaction</button>
         </div>
       </header>
 
-      {/* 1–5: headline figures */}
       <section className="stat-row" aria-label="Monthly figures">
         <article className="stat">
           <span className="bubble purple" aria-hidden="true" />
@@ -90,12 +96,11 @@ export default function DashboardPage() {
           <span className="bubble blue" aria-hidden="true" />
           <span>Active Bills</span>
           <strong className="blue">{summary.activeCount}</strong>
-          <small>tracked this month</small>
+          <small>tracked for {month}</small>
         </article>
       </section>
 
       <section className="widget-row">
-        {/* 6: due in the next seven days */}
         <article className="widget">
           <header>
             <strong>Bills Due in the Next 7 Days</strong>
@@ -121,7 +126,6 @@ export default function DashboardPage() {
           <footer className="muted">{plural(dueSoon.length, 'bill')} due in the next 7 days</footer>
         </article>
 
-        {/* 7: this month overview */}
         <article className="widget">
           <header>
             <strong>This Month Overview ({month})</strong>
@@ -138,7 +142,7 @@ export default function DashboardPage() {
               ))}
             </ul>
             <div className="ring-wrap">
-              <svg viewBox="0 0 130 130" className="ring" role="img" aria-label={`${summary.percentOfBudget}% of this month's budget paid`}>
+              <svg viewBox="0 0 130 130" className="ring" role="img" aria-label={`${summary.percentOfBudget}% of ${month}'s budget paid`}>
                 <circle cx="65" cy="65" r={RING_RADIUS} className="ring-track" />
                 {segments.filter(({ length }) => length > 0).map(({ key, length, offset }) => (
                   <circle
@@ -162,7 +166,6 @@ export default function DashboardPage() {
           </footer>
         </article>
 
-        {/* 8: cash flow snapshot */}
         <article className="widget">
           <header>
             <strong>Cash Flow Snapshot</strong>
@@ -179,7 +182,6 @@ export default function DashboardPage() {
       </section>
 
       <section className="widget-row">
-        {/* 9: recent activity */}
         <article className="widget">
           <header><strong>Recent Activity</strong><a href="/">View All</a></header>
           {activity.length === 0 ? (
@@ -205,10 +207,8 @@ export default function DashboardPage() {
           )}
         </article>
 
-        {/* 10: accounts summary (reads accounts saved on this device) */}
         <AccountsSummary />
 
-        {/* 11: savings goals */}
         <article className="widget">
           <header>
             <strong>Savings Goals</strong>
