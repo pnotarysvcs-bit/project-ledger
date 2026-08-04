@@ -1,13 +1,12 @@
-import { ACCOUNT_KINDS, toLastFour } from './accounts.js';
+import { ACCOUNT_KINDS } from './accounts.js';
 
 const STORAGE_KEY = 'project-ledger.accounts.v1';
 
 /**
- * Browser-local persistence for saved bank accounts.
+ * Temporary browser-local persistence for saved bank accounts.
  *
- * There is no backend wired yet, so accounts live in localStorage and stay on
- * the device that entered them. Every read is defensive: a corrupt or
- * hand-edited value must not take the page down.
+ * Records contain only bank name and account type. Legacy account-number,
+ * last-four, nickname, and credit-card fields are discarded during migration.
  */
 
 function storage() {
@@ -15,7 +14,6 @@ function storage() {
   try {
     return window.localStorage;
   } catch {
-    // Storage is unavailable in private-mode and sandboxed contexts.
     return null;
   }
 }
@@ -24,39 +22,27 @@ function isRecord(value) {
   return value && typeof value === 'object' && typeof value.id === 'string';
 }
 
-/**
- * Bring a stored record up to the current shape.
- *
- * Earlier builds stored a whole account number under `number`. Those are
- * reduced to their last four digits here and the full value is dropped, so
- * loading the page is enough to clear it from the device.
- */
 export function migrateAccount(record) {
   if (!isRecord(record)) return null;
 
-  const lastFour = toLastFour(record.lastFour ?? record.number);
-  if (!lastFour || typeof record.name !== 'string' || typeof record.kind !== 'string') {
-    return null;
-  }
+  const institution = String(record.institution ?? record.name ?? '').trim();
+  const kind = String(record.kind ?? '').toLowerCase().replace(/[\s-]/g, '_');
 
-  // Earlier builds stored capitalised labels ("Checking"); the account_type
-  // enum spells them lowercase.
-  const kind = String(record.kind).toLowerCase().replace(/[\s-]/g, '_');
-  if (!ACCOUNT_KINDS.includes(kind)) return null;
+  if (!institution || !ACCOUNT_KINDS.includes(kind)) return null;
 
   return {
     id: record.id,
-    name: record.name,
-    institution: typeof record.institution === 'string' ? record.institution : '',
-    lastFour,
+    institution,
     kind,
   };
 }
 
-/** True when any stored record still carries a pre-migration full number. */
 export function needsMigration(records = []) {
   return records.some((record) => isRecord(record)
-    && (record.number !== undefined || !ACCOUNT_KINDS.includes(record.kind)));
+    && (record.number !== undefined
+      || record.lastFour !== undefined
+      || record.name !== undefined
+      || !ACCOUNT_KINDS.includes(record.kind)));
 }
 
 export function loadAccounts() {
@@ -68,8 +54,6 @@ export function loadAccounts() {
     if (!Array.isArray(parsed)) return [];
 
     const migrated = parsed.map(migrateAccount).filter(Boolean);
-
-    // Rewrite immediately so a discarded full number does not linger on disk.
     if (needsMigration(parsed)) saveAccounts(migrated);
 
     return migrated;
@@ -83,7 +67,8 @@ export function saveAccounts(accounts) {
   if (!store) return false;
 
   try {
-    store.setItem(STORAGE_KEY, JSON.stringify(accounts));
+    const safeAccounts = accounts.map(migrateAccount).filter(Boolean);
+    store.setItem(STORAGE_KEY, JSON.stringify(safeAccounts));
     return true;
   } catch {
     return false;
