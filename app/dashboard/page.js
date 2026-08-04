@@ -11,6 +11,7 @@ import {
   labelForDashboardMonth,
   resolveDashboardMonth,
 } from '../../src/dashboard-months.js';
+import { greetingForCentralTime } from '../../src/time-greeting.js';
 import { SAMPLE_CASH_FLOW, SAMPLE_SAVINGS_GOALS, SAMPLE_TIP } from '../../src/sample-data.js';
 import AccountsSummary from './accounts-summary.js';
 import MonthSelector from './month-selector.js';
@@ -27,13 +28,6 @@ const plural = (count, noun) => `${count} ${noun}${count === 1 ? '' : 's'}`;
 
 const RING_RADIUS = 54;
 const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
-
-function greeting(date) {
-  const hour = date.getHours();
-  if (hour < 12) return 'Good morning';
-  if (hour < 18) return 'Good afternoon';
-  return 'Good evening';
-}
 
 /** Marks a widget whose numbers are placeholders rather than ledger data. */
 function SampleBadge() {
@@ -58,12 +52,11 @@ export default async function DashboardPage({ searchParams }) {
     <>
       <header className="page-head">
         <div>
-          <h1>{greeting(now)}, Kim! <span aria-hidden="true">👋</span></h1>
+          <h1>{greetingForCentralTime(now)}, Kim! <span aria-hidden="true">👋</span></h1>
           <p className="lede">Here&rsquo;s what needs your attention today.</p>
         </div>
         <div className="head-actions">
           <MonthSelector selectedMonth={selectedMonth} />
-          <button type="button">+ Add Transaction</button>
         </div>
       </header>
 

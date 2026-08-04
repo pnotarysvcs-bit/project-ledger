@@ -4,147 +4,124 @@ import assert from 'node:assert/strict';
 import {
   ACCOUNT_KINDS,
   createAccount,
-  formatLastFour,
   labelForKind,
-  normalizeDigits,
   sortAccounts,
   summarizeAccounts,
-  toLastFour,
   validateAccount,
 } from '../src/accounts.js';
 import { migrateAccount, needsMigration } from '../src/accounts-store.js';
 
-const valid = { name: 'TCU Checking', institution: 'TCU', lastFour: '5678', kind: 'checking' };
+const valid = { institution: 'Together Credit Union', kind: 'checking' };
 
-test('spaces and dashes are stripped', () => {
-  assert.equal(normalizeDigits('1234-5678'), '12345678');
-  assert.equal(normalizeDigits('1234 5678'), '12345678');
-  assert.equal(normalizeDigits(null), '');
-});
-
-test('pasting a whole account number keeps only the last four digits', () => {
-  assert.equal(toLastFour('1234567890'), '7890');
-  assert.equal(toLastFour('1234-5678'), '5678');
-  assert.equal(toLastFour('5678'), '5678');
-});
-
-test('stored digits render masked', () => {
-  assert.equal(formatLastFour('5678'), '••••5678');
-  assert.equal(formatLastFour(''), '');
-});
-
-test('a complete account passes validation', () => {
+test('bank name and account type pass validation', () => {
   const result = validateAccount(valid);
 
   assert.equal(result.valid, true);
   assert.deepEqual(result.errors, {});
 });
 
-test('name, institution, last four, and kind are each required', () => {
-  const result = validateAccount({ name: '  ', institution: '', lastFour: '', kind: '' });
+test('bank name and account type are required', () => {
+  const result = validateAccount({ institution: '', kind: '' });
 
   assert.equal(result.valid, false);
-  assert.ok(result.errors.name);
   assert.ok(result.errors.institution);
-  assert.ok(result.errors.lastFour);
   assert.ok(result.errors.kind);
 });
 
-test('last four must be exactly four digits', () => {
-  assert.match(validateAccount({ ...valid, lastFour: '567' }).errors.lastFour, /exactly four/);
-  assert.match(validateAccount({ ...valid, lastFour: '56789' }).errors.lastFour, /exactly four/);
-  assert.match(validateAccount({ ...valid, lastFour: '56a8' }).errors.lastFour, /Digits only/);
-});
-
-test('kinds mirror the account_type enum exactly', () => {
-  assert.deepEqual(ACCOUNT_KINDS, ['checking', 'savings', 'credit_card']);
+test('only checking and savings are supported', () => {
+  assert.deepEqual(ACCOUNT_KINDS, ['checking', 'savings']);
   assert.equal(validateAccount({ ...valid, kind: 'savings' }).valid, true);
-  assert.equal(validateAccount({ ...valid, kind: 'credit_card' }).valid, true);
+  assert.equal(validateAccount({ ...valid, kind: 'credit_card' }).valid, false);
   assert.equal(validateAccount({ ...valid, kind: 'brokerage' }).valid, false);
-  // Capitalised labels are presentation only and are not valid stored values.
-  assert.equal(validateAccount({ ...valid, kind: 'Checking' }).valid, false);
 });
 
 test('labels are presentation only', () => {
-  assert.equal(labelForKind('credit_card'), 'Credit Card');
   assert.equal(labelForKind('checking'), 'Checking');
+  assert.equal(labelForKind('savings'), 'Savings');
 });
 
-test('the same last four at the same institution cannot be saved twice', () => {
+test('the same bank and account type cannot be saved twice', () => {
   const existing = [createAccount(valid)];
   const duplicate = validateAccount(valid, existing);
 
   assert.equal(duplicate.valid, false);
-  assert.match(duplicate.errors.lastFour, /already saved/);
+  assert.match(duplicate.errors.institution, /already saved/);
 });
 
-test('the same last four at a different institution is allowed', () => {
+test('the same bank may have one checking and one savings account', () => {
   const existing = [createAccount(valid)];
-  const other = validateAccount({ ...valid, institution: 'Chase' }, existing);
+  const savings = validateAccount({ ...valid, kind: 'savings' }, existing);
 
-  assert.equal(other.valid, true);
+  assert.equal(savings.valid, true);
 });
 
 test('editing an account does not collide with itself', () => {
   const saved = createAccount(valid);
-  const edited = validateAccount({ ...valid, id: saved.id, name: 'Renamed' }, [saved]);
+  const edited = validateAccount({ ...valid, id: saved.id }, [saved]);
 
   assert.equal(edited.valid, true);
 });
 
-test('a created account never carries a full account number', () => {
-  const account = createAccount({ name: ' TCU Savings ', institution: ' TCU ', lastFour: '9876-5432', kind: 'savings' });
+test('a created account contains no account-number fields', () => {
+  const account = createAccount({ institution: ' Together Credit Union ', kind: 'savings' });
 
-  assert.equal(account.name, 'TCU Savings');
-  assert.equal(account.institution, 'TCU');
-  assert.equal(account.lastFour, '5432');
+  assert.equal(account.institution, 'Together Credit Union');
+  assert.equal(account.kind, 'savings');
+  assert.equal(account.lastFour, undefined);
   assert.equal(account.number, undefined);
+  assert.equal(account.name, undefined);
 });
 
-test('a legacy record with a full number is reduced to its last four', () => {
-  const legacy = { id: 'a1', name: 'Old', number: '1234567890', kind: 'Checking' };
+test('legacy account fields are discarded during migration', () => {
+  const legacy = {
+    id: 'a1',
+    name: 'TCU Checking',
+    institution: 'Together Credit Union',
+    number: '1234567890',
+    lastFour: '7890',
+    kind: 'checking',
+  };
 
-  const migrated = migrateAccount(legacy);
-
-  assert.equal(migrated.kind, 'checking', 'capitalised label migrates to the enum value');
-  assert.equal(migrated.lastFour, '7890');
-  assert.equal(migrated.number, undefined);
-  assert.equal(migrated.institution, '');
+  assert.deepEqual(migrateAccount(legacy), {
+    id: 'a1',
+    institution: 'Together Credit Union',
+    kind: 'checking',
+  });
 });
 
 test('legacy records are detected so storage can be rewritten', () => {
-  assert.equal(needsMigration([{ id: 'a', number: '12345678' }]), true);
-  assert.equal(needsMigration([{ id: 'a', lastFour: '5678', kind: 'Checking' }]), true);
-  assert.equal(needsMigration([{ id: 'a', lastFour: '5678', kind: 'checking' }]), false);
+  assert.equal(needsMigration([{ id: 'a', institution: 'TCU', number: '12345678', kind: 'checking' }]), true);
+  assert.equal(needsMigration([{ id: 'a', institution: 'TCU', lastFour: '5678', kind: 'checking' }]), true);
+  assert.equal(needsMigration([{ id: 'a', institution: 'TCU', kind: 'checking' }]), false);
 });
 
-test('unusable records are dropped rather than half-loaded', () => {
+test('unsupported and unusable records are dropped', () => {
   assert.equal(migrateAccount(null), null);
-  assert.equal(migrateAccount({ id: 'a', name: 'No digits', kind: 'checking' }), null);
-  assert.equal(migrateAccount({ id: 'a', name: 'Bad kind', lastFour: '1234', kind: 'brokerage' }), null);
+  assert.equal(migrateAccount({ id: 'a', institution: '', kind: 'checking' }), null);
+  assert.equal(migrateAccount({ id: 'a', institution: 'TCU', kind: 'credit_card' }), null);
 });
 
-test('accounts sort checking before savings, alphabetically within a kind', () => {
+test('accounts sort checking before savings, alphabetically by bank', () => {
   const accounts = [
-    { id: '1', name: 'Zeta Savings', lastFour: '1111', kind: 'savings' },
-    { id: '2', name: 'Beta Checking', lastFour: '2222', kind: 'checking' },
-    { id: '3', name: 'Alpha Savings', lastFour: '3333', kind: 'savings' },
-    { id: '4', name: 'Alpha Checking', lastFour: '4444', kind: 'checking' },
+    { id: '1', institution: 'Zeta Bank', kind: 'savings' },
+    { id: '2', institution: 'Beta Bank', kind: 'checking' },
+    { id: '3', institution: 'Alpha Bank', kind: 'savings' },
+    { id: '4', institution: 'Alpha Bank', kind: 'checking' },
   ];
 
   assert.deepEqual(
-    sortAccounts(accounts).map(({ name }) => name),
-    ['Alpha Checking', 'Beta Checking', 'Alpha Savings', 'Zeta Savings'],
+    sortAccounts(accounts).map(({ institution, kind }) => `${institution}:${kind}`),
+    ['Alpha Bank:checking', 'Beta Bank:checking', 'Alpha Bank:savings', 'Zeta Bank:savings'],
   );
 });
 
-test('the summary counts each kind', () => {
+test('the summary counts checking and savings', () => {
   const accounts = [
-    { id: '1', name: 'A', lastFour: '1111', kind: 'checking' },
-    { id: '2', name: 'B', lastFour: '2222', kind: 'savings' },
-    { id: '3', name: 'C', lastFour: '3333', kind: 'savings' },
+    { id: '1', institution: 'A', kind: 'checking' },
+    { id: '2', institution: 'B', kind: 'savings' },
+    { id: '3', institution: 'C', kind: 'savings' },
   ];
 
-  assert.deepEqual(summarizeAccounts(accounts), { total: 3, checking: 1, savings: 2, creditCard: 0 });
-  assert.deepEqual(summarizeAccounts(), { total: 0, checking: 0, savings: 0, creditCard: 0 });
+  assert.deepEqual(summarizeAccounts(accounts), { total: 3, checking: 1, savings: 2 });
+  assert.deepEqual(summarizeAccounts(), { total: 0, checking: 0, savings: 0 });
 });
