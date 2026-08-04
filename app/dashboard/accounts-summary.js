@@ -2,13 +2,12 @@
 
 import { useEffect, useState } from 'react';
 
-import { formatLastFour, sortAccounts } from '../../src/accounts.js';
+import { labelForKind, sortAccounts } from '../../src/accounts.js';
 import { loadAccounts } from '../../src/accounts-store.js';
 import { SAMPLE_BALANCES } from '../../src/sample-data.js';
 
 const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
 
-/** A seven-point sparkline drawn from a small series of relative values. */
 function Sparkline({ points, tone }) {
   const max = Math.max(...points, 1);
   const path = points
@@ -41,7 +40,7 @@ export default function AccountsSummary() {
       {!loaded && <p className="muted">Loading accounts…</p>}
 
       {loaded && accounts.length === 0 && (
-        <p className="muted">No accounts yet. <a href="/accounts">Add one</a> to see balances here.</p>
+        <p className="muted">No accounts yet. <a href="/accounts">Add one</a> to see it here.</p>
       )}
 
       {loaded && accounts.length > 0 && (
@@ -52,8 +51,8 @@ export default function AccountsSummary() {
               <li key={account.id}>
                 <span className={`bubble ${account.kind}`} aria-hidden="true" />
                 <span className="account-name">
-                  <b>{account.name}</b>
-                  <small>{account.institution ? `${account.institution} ` : ''}{formatLastFour(account.lastFour)}</small>
+                  <b>{account.institution}</b>
+                  <small>{labelForKind(account.kind)}</small>
                 </span>
                 <span className="account-balance">
                   <b>{money.format(balance.amount)}</b>
