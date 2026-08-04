@@ -1,4 +1,4 @@
-import { getBillsMaster } from '../../src/bills-master.js';
+import { fetchBills } from '../../src/db/bills.js';
 import {
   getDueSoon,
   getMonthSummary,
@@ -35,9 +35,9 @@ function SampleBadge() {
   return <span className="badge-sample" title="Placeholder data — not from the ledger">Sample</span>;
 }
 
-export default function DashboardPage() {
+export default async function DashboardPage() {
   const asOf = new Date();
-  const rows = getBillsMaster({ asOf });
+  const { rows } = await fetchBills({ asOf });
 
   const summary = getMonthSummary(rows, { asOf });
   const dueSoon = getDueSoon(rows, { asOf, days: 7 });

@@ -36,7 +36,8 @@ function sumAmounts(bills) {
   return bills.reduce((total, bill) => total + (bill.amount ?? 0), 0);
 }
 
-const activeOnly = (rows) => rows.filter(({ status }) => status !== 'inactive');
+const ARCHIVED_STATUSES = new Set(['inactive', 'archived']);
+const activeOnly = (rows) => rows.filter(({ status }) => !ARCHIVED_STATUSES.has(status));
 
 /** Bills whose next due date falls in the asOf month. */
 export function billsForMonth(rows = [], { asOf = new Date() } = {}) {

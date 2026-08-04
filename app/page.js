@@ -1,9 +1,10 @@
-import { getBillsMaster, groupByType, summarizeBills } from '../src/bills-master.js';
+import { groupByType, summarizeBills } from '../src/bills-master.js';
 import { calculateMonthlyProgress } from '../src/bills/monthly-progress.js';
+import { fetchBills } from '../src/db/bills.js';
+import { missingEnvVars } from '../src/db/client.js';
 
-// Bill status is relative to "today", so the page must be rendered per request.
-// Static prerendering would freeze `asOf` at build time and let the ledger go
-// stale exactly the way the previously hardcoded date did.
+// Bill status is relative to "today", and the rows come from the database, so
+// the page must be rendered per request rather than frozen at build time.
 export const dynamic = 'force-dynamic';
 
 const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
@@ -12,9 +13,40 @@ const displayDate = (date) => date
   ? new Intl.DateTimeFormat('en-US', { timeZone: 'UTC' }).format(new Date(`${date}T00:00:00Z`))
   : '-';
 
-export default function BillsPage() {
+function Unavailable({ error }) {
+  const missing = missingEnvVars();
+
+  return (
+    <section className="panel">
+      <header><strong>Bills unavailable</strong></header>
+      <div className="account-form">
+        {error === 'not-configured' ? (
+          <>
+            <p className="muted">The ledger database is not configured for this deployment.</p>
+            <p className="muted">Set {missing.map((name) => <code key={name}>{name}</code>).reduce((all, item) => (all.length ? [...all, ' and ', item] : [item]), [])} in the hosting environment, then redeploy.</p>
+          </>
+        ) : (
+          <p className="muted">The ledger database could not be read: {error}</p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+export default async function BillsPage() {
   const asOf = new Date();
-  const rows = getBillsMaster({ asOf });
+  const { rows, error } = await fetchBills({ asOf });
+
+  if (error) {
+    return (
+      <>
+        <p className="eyebrow">Bill management</p>
+        <h1>{monthLabel.format(asOf)} Master Bills</h1>
+        <Unavailable error={error} />
+      </>
+    );
+  }
+
   const summary = summarizeBills(rows);
   const progress = calculateMonthlyProgress(rows, { asOf });
 
@@ -22,7 +54,7 @@ export default function BillsPage() {
     <>
       <p className="eyebrow">Bill management</p>
       <h1>{monthLabel.format(asOf)} Master Bills</h1>
-      <p className="lede">Review every personal and business bill in one place. Amounts and due dates are projected from bill payments found in imported statements.</p>
+      <p className="lede">Every personal, streaming, and business bill in one place. Due dates are projected from each bill&rsquo;s cadence.</p>
 
       <section className="summary" aria-label="Bill summary">
         <article><span>Total</span><strong>{money.format(summary.total)}</strong><small>{summary.activeCount} active bills</small></article>
@@ -60,12 +92,15 @@ export default function BillsPage() {
           <header><strong>{type} <small>{bills.length}</small></strong><button type="button">+ Add Bill</button></header>
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Bill</th><th>Type</th><th>Account</th><th>Amount</th><th>Last paid</th><th>Next due</th><th>Status</th></tr></thead>
+              <thead><tr><th>Bill</th><th>Category</th><th>Account</th><th>Budget</th><th>Frequency</th><th>Next due</th><th>Status</th></tr></thead>
               <tbody>{bills.map((bill) => (
                 <tr key={bill.id}>
-                  <td><b>{bill.payee}</b><small>{bill.frequency}</small></td>
-                  <td>{bill.type}</td><td>{bill.account}</td><td>{money.format(bill.amount)}</td>
-                  <td>{displayDate(bill.lastPaid)}</td><td>{displayDate(bill.nextDue)}</td>
+                  <td><b>{bill.payee}</b>{bill.notes && <small>{bill.notes}</small>}</td>
+                  <td>{bill.category ?? '-'}</td>
+                  <td>{bill.account ?? '-'}</td>
+                  <td>{money.format(bill.amount)}</td>
+                  <td>{bill.frequency}</td>
+                  <td>{displayDate(bill.nextDue)}</td>
                   <td><span className={`status ${bill.status}`}>{bill.status.replace('-', ' ')}</span></td>
                 </tr>
               ))}</tbody>

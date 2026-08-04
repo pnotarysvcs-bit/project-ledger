@@ -71,8 +71,10 @@ export function groupByType(rows) {
  * Total, Paid, and Remaining are a closed set — Paid + Remaining always equals
  * Total — so the tiles cannot disagree with each other or with the table.
  */
+export const ARCHIVED_STATUSES = new Set(['inactive', 'archived']);
+
 export function summarizeBills(rows) {
-  const active = rows.filter(({ status }) => status !== 'inactive');
+  const active = rows.filter(({ status }) => !ARCHIVED_STATUSES.has(status));
   const paid = active.filter(({ status }) => PAID_STATUSES.has(status));
   const remaining = active.filter(({ status }) => !PAID_STATUSES.has(status));
   const dueSoon = active.filter(({ status }) => status === 'due-soon');

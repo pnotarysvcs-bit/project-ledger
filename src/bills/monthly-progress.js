@@ -1,6 +1,7 @@
 // 'submitted' is a payment sent but not yet posted. It counts as settled for
 // budget purposes; see the note in src/bills.js.
 const PAID_STATUSES = new Set(['paid', 'submitted']);
+const ARCHIVED_STATUSES = new Set(['inactive', 'archived']);
 
 function monthKey(value) {
   const date = value instanceof Date
@@ -28,7 +29,7 @@ function sumAmounts(bills) {
 export function calculateMonthlyProgress(rows = [], { asOf = new Date() } = {}) {
   const currentMonth = monthKey(asOf);
 
-  const thisMonth = rows.filter((bill) => bill.status !== 'inactive'
+  const thisMonth = rows.filter((bill) => !ARCHIVED_STATUSES.has(bill.status)
     && bill.nextDue
     && monthKey(bill.nextDue) === currentMonth);
 

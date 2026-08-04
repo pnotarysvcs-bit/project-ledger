@@ -77,7 +77,7 @@ test('an annual bill falls due once a year on its start month', () => {
 });
 
 test('a one-time bill falls due only in its start month', () => {
-  const once = bill({ frequency: 'one_time', start_month: '2026-04-01' });
+  const once = bill({ frequency: 'one-time', start_month: '2026-04-01' });
 
   assert.equal(dueDateInPeriod(once, '2026-04'), '2026-04-15');
   assert.equal(dueDateInPeriod(once, '2026-05'), null);
@@ -86,21 +86,28 @@ test('a one-time bill falls due only in its start month', () => {
 
 test('a fortnightly bill can fall due more than once in a month', () => {
   // Anchored 1 Jan 2026: 1, 15, 29 Jan, then 12, 26 Feb.
-  const fortnightly = bill({ frequency: 'bi_weekly', start_month: '2026-01-01' });
+  const fortnightly = bill({ frequency: 'bi-weekly', start_month: '2026-01-01' });
 
   assert.deepEqual(dueDatesInPeriod(fortnightly, '2026-01'), ['2026-01-01', '2026-01-15', '2026-01-29']);
   assert.deepEqual(dueDatesInPeriod(fortnightly, '2026-02'), ['2026-02-12', '2026-02-26']);
 });
 
 test('a fortnightly bill ignores due_day, which does not apply to it', () => {
-  const fortnightly = bill({ frequency: 'bi_weekly', start_month: '2026-01-01', due_day: 22 });
+  const fortnightly = bill({ frequency: 'bi-weekly', start_month: '2026-01-01', due_day: 22 });
 
   assert.deepEqual(dueDatesInPeriod(fortnightly, '2026-01'), ['2026-01-01', '2026-01-15', '2026-01-29']);
 });
 
-test('a custom cadence yields nothing rather than a wrong date', () => {
-  assert.deepEqual(dueDatesInPeriod(bill({ frequency: 'custom' }), '2026-08'), []);
-  assert.equal(nextDueDate(bill({ frequency: 'custom' }), { asOf: '2026-08-03' }), null);
+test('an unrecognised cadence yields nothing rather than a wrong date', () => {
+  assert.deepEqual(dueDatesInPeriod(bill({ frequency: 'whenever' }), '2026-08'), []);
+  assert.equal(nextDueDate(bill({ frequency: 'whenever' }), { asOf: '2026-08-03' }), null);
+});
+
+test('underscore spellings still resolve', () => {
+  assert.deepEqual(
+    dueDatesInPeriod(bill({ frequency: 'bi_weekly', start_month: '2026-01-01' }), '2026-01'),
+    ['2026-01-01', '2026-01-15', '2026-01-29'],
+  );
 });
 
 test('an inactive bill is never due', () => {
@@ -126,7 +133,7 @@ test('an annual bill is still found months ahead', () => {
 });
 
 test('a search that can never succeed terminates instead of looping', () => {
-  const expired = bill({ frequency: 'one_time', start_month: '2020-01-01' });
+  const expired = bill({ frequency: 'one-time', start_month: '2020-01-01' });
 
   assert.equal(nextDueDate(expired, { asOf: '2026-08-03' }), null);
 });

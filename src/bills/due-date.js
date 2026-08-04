@@ -10,12 +10,19 @@
  * month boundary and silently move it into the wrong period.
  */
 
-export const FREQUENCIES = ['monthly', 'quarterly', 'annual', 'bi_weekly', 'one_time', 'custom'];
+// Spelled as ledger_bills.frequency stores them.
+export const FREQUENCIES = ['monthly', 'bi-weekly', 'quarterly', 'annual', 'one-time'];
 
-/** Cadences with no fixed rule. They need a per-bill schedule we do not hold. */
-export const UNSUPPORTED_FREQUENCIES = ['custom'];
+/** Accept underscore spellings so older records still resolve. */
+export function normalizeFrequency(value) {
+  return String(value ?? '').trim().toLowerCase().replace(/_/g, '-');
+}
+
+export const isSupportedFrequency = (value) => FREQUENCIES.includes(normalizeFrequency(value));
 
 const MONTHS_PER_PERIOD = { monthly: 1, quarterly: 3, annual: 12 };
+const BI_WEEKLY = 'bi-weekly';
+const ONE_TIME = 'one-time';
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const BI_WEEKLY_DAYS = 14;
 
@@ -88,7 +95,10 @@ function biWeeklyDatesIn(bill, period) {
  * which is why this returns a list rather than a single date.
  */
 export function dueDatesInPeriod(bill, periodMonth) {
-  if (UNSUPPORTED_FREQUENCIES.includes(bill.frequency)) return [];
+  const frequency = normalizeFrequency(bill.frequency);
+
+  // An unrecognised cadence yields no date rather than a wrong one.
+  if (!isSupportedFrequency(frequency)) return [];
   if (bill.active === false) return [];
   if (!isActiveInPeriod(bill, periodMonth)) return [];
 
@@ -96,12 +106,12 @@ export function dueDatesInPeriod(bill, periodMonth) {
   const period = parseDate(periodMonth);
   const elapsed = wholeMonthsBetween(start, period);
 
-  if (bill.frequency === 'bi_weekly') return biWeeklyDatesIn(bill, period);
+  if (frequency === BI_WEEKLY) return biWeeklyDatesIn(bill, period);
 
-  if (bill.frequency === 'one_time') {
+  if (frequency === ONE_TIME) {
     if (elapsed !== 0) return [];
   } else {
-    const step = MONTHS_PER_PERIOD[bill.frequency];
+    const step = MONTHS_PER_PERIOD[frequency];
     if (!step || elapsed % step !== 0) return [];
   }
 
