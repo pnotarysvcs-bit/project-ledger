@@ -82,6 +82,21 @@ test('the status breakdown covers every bill in the month exactly once', () => {
   );
 });
 
+test('a submitted bill is counted once, not in both paid and pending', () => {
+  const submitted = [
+    { id: 's', payee: 'Affirm', amount: 60, nextDue: '2026-08-06', status: 'submitted' },
+  ];
+
+  const breakdown = getStatusBreakdown(submitted, { asOf });
+  const counted = breakdown.reduce((sum, { count }) => sum + count, 0);
+  const charged = breakdown.reduce((sum, { amount }) => sum + amount, 0);
+
+  assert.equal(counted, 1, 'submitted must not fall into two buckets');
+  assert.equal(charged, 60, 'a double-counted bill would overrun the ring');
+  assert.equal(breakdown.find(({ key }) => key === 'paid').count, 1);
+  assert.equal(breakdown.find(({ key }) => key === 'pending').count, 0);
+});
+
 test('recent activity is newest first and labelled by status', () => {
   const activity = getRecentActivity(rows);
 

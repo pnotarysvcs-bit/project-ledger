@@ -16,7 +16,7 @@ const BILL_RECORDS = [
 ];
 
 const PAYMENT_RECORDS = [
-  // Affirm was completed in July. It becomes the last-paid payment in August.
+  // Affirm was submitted in July. It becomes the last-paid payment in August.
   { billId: 'affirm', date: '2026-07-06', postOn: '2026-08-01', amount: 64.52 },
 ];
 
@@ -25,7 +25,7 @@ const ACCOUNT_TYPES = {
   TCU: 'Personal',
 };
 
-const PAID_STATUSES = new Set(['paid', 'completed']);
+const PAID_STATUSES = new Set(['paid', 'submitted']);
 
 /**
  * Resolve a bill's ledger type from its funding account.

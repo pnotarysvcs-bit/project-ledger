@@ -9,8 +9,11 @@
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
-const PAID_STATUSES = new Set(['paid', 'completed']);
-const PENDING_STATUSES = new Set(['due-soon', 'new', 'submitted']);
+// These two sets must stay disjoint: the overview buckets are meant to be
+// exhaustive over the month, so a status in both would be counted twice and
+// the ring would overrun. 'submitted' counts as settled, not pending.
+const PAID_STATUSES = new Set(['paid', 'submitted']);
+const PENDING_STATUSES = new Set(['due-soon', 'new']);
 
 function dateOnly(value) {
   const date = value instanceof Date
@@ -116,7 +119,7 @@ export function getStatusBreakdown(rows = [], { asOf = new Date() } = {}) {
 export function getRecentActivity(rows = [], { limit = 4 } = {}) {
   const labels = {
     paid: 'Payment Matched',
-    completed: 'Payment Matched',
+    submitted: 'Payment Submitted',
     overdue: 'Payment Overdue',
   };
 

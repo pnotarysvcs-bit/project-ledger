@@ -43,7 +43,7 @@ export function findLastPayment(bill, payments = [], { asOf = new Date() } = {})
     .sort((left, right) => dateOnly(right.date) - dateOnly(left.date))[0] ?? null;
 }
 
-function findCompletedPaymentAwaitingRollover(bill, payments = [], asOf = new Date()) {
+function findSubmittedPaymentAwaitingRollover(bill, payments = [], asOf = new Date()) {
   const today = dateOnly(asOf);
 
   return payments.find((payment) => paymentBelongsToBill(payment, bill)
@@ -55,11 +55,16 @@ function findCompletedPaymentAwaitingRollover(bill, payments = [], asOf = new Da
 /**
  * Derive status from the due date rather than trusting the persisted "new"
  * value. A bill is overdue beginning on the calendar day after its due date.
+ *
+ * Statuses follow the managed_bill_status enum. "submitted" means a payment
+ * has been sent but has not yet posted; it is currently treated as settled by
+ * the budget totals, which is a deliberate choice and not yet confirmed
+ * against how bill_payments.actual_amount is filled in.
  */
 export function deriveBillStatus(bill, {
   asOf = new Date(),
   lastPayment = null,
-  completedPayment = null,
+  submittedPayment = null,
 } = {}) {
   const dueDate = dateOnly(bill.nextDue);
   const today = dateOnly(asOf);
@@ -67,7 +72,7 @@ export function deriveBillStatus(bill, {
 
   if (bill.inactive) return 'inactive';
   if (!dueDate) return bill.status ?? 'new';
-  if (completedPayment) return 'completed';
+  if (submittedPayment) return 'submitted';
 
   if (paidDate && paidDate >= dueDate) return 'paid';
   if (dueDate < today) return 'overdue';
@@ -81,13 +86,13 @@ export function deriveBillStatus(bill, {
 export function enrichBills(bills, payments = [], options = {}) {
   return bills.map((bill) => {
     const lastPayment = findLastPayment(bill, payments, options);
-    const completedPayment = findCompletedPaymentAwaitingRollover(bill, payments, options.asOf);
+    const submittedPayment = findSubmittedPaymentAwaitingRollover(bill, payments, options.asOf);
     const lastPaid = lastPayment?.date ?? bill.lastPaid ?? null;
 
     return {
       ...bill,
       lastPaid,
-      status: deriveBillStatus(bill, { ...options, lastPayment, completedPayment }),
+      status: deriveBillStatus(bill, { ...options, lastPayment, submittedPayment }),
     };
   });
 }
