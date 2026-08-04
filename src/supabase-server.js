@@ -1,9 +1,31 @@
+function findEnvironmentValue(names, suffix) {
+  for (const name of names) {
+    const value = process.env[name];
+    if (value) return value;
+  }
+
+  const match = Object.entries(process.env).find(([name, value]) =>
+    Boolean(value) && name.toUpperCase().endsWith(suffix),
+  );
+
+  return match?.[1];
+}
+
 function getConfig() {
-  const url = process.env.SUPABASE_URL ?? process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const url = findEnvironmentValue(
+    ['SUPABASE_URL', 'NEXT_PUBLIC_SUPABASE_URL'],
+    '_SUPABASE_URL',
+  );
+  const key = findEnvironmentValue(
+    ['SUPABASE_SERVICE_ROLE_KEY', 'Project_ledger_SUPABASE_SERVICE_ROLE_KEY'],
+    '_SUPABASE_SERVICE_ROLE_KEY',
+  );
 
   if (!url || !key) {
-    throw new Error('Supabase server configuration is missing.');
+    const missing = [!url && 'Supabase URL', !key && 'Supabase service role key']
+      .filter(Boolean)
+      .join(' and ');
+    throw new Error(`${missing} is missing from the server environment.`);
   }
 
   return { url: url.replace(/\/$/, ''), key };
