@@ -41,6 +41,7 @@ function monthOptions(selectedMonth) {
 export default async function BillsPage({ searchParams }) {
   const params = await searchParams;
   const selectedMonth = normalizeMonth(params?.month);
+  const actionError = typeof params?.actionError === 'string' ? params.actionError : null;
 
   let rows = [];
   let loadError = null;
@@ -51,6 +52,10 @@ export default async function BillsPage({ searchParams }) {
   }
 
   const summary = summarizeLedgerBills(rows);
+  const visibleRows = rows.filter((bill) => bill.status !== 'submitted');
+  const payableBills = visibleRows
+    .map((bill) => ({ ...bill, submitAmount: bill.remaining ?? bill.budget ?? 0 }))
+    .filter((bill) => bill.submitAmount > 0);
 
   return (
     <>
@@ -72,6 +77,7 @@ export default async function BillsPage({ searchParams }) {
       </div>
 
       {loadError && <p className="alert" role="alert">Bills could not be loaded: {loadError}</p>}
+      {actionError && <p className="alert" role="alert">{actionError}</p>}
 
       <section className="summary" aria-label="Bill summary">
         <article><span>Total Budget</span><strong>{money.format(summary.total)}</strong><small>{summary.activeCount} active bills</small></article>
@@ -84,11 +90,27 @@ export default async function BillsPage({ searchParams }) {
         <p className="alert" role="status">{summary.overdueCount} overdue &middot; {money.format(summary.overdue)}</p>
       )}
 
+      <form className="bulk-actions" action="/api/bills/bulk-submit" method="post">
+        <input type="hidden" name="month" value={selectedMonth} />
+        {payableBills.map((bill) => (
+          <span key={bill.id}>
+            <input type="hidden" name="id" value={bill.id} />
+            <input type="hidden" name="amount" value={bill.submitAmount} />
+          </span>
+        ))}
+        <button type="submit" disabled={payableBills.length === 0}>Bulk Submit Payable Bills</button>
+        <small>{payableBills.length} payable {payableBills.length === 1 ? 'bill' : 'bills'} shown</small>
+      </form>
+
       {!loadError && rows.length === 0 && (
         <section className="panel"><p className="empty">No active bills apply to {monthName(selectedMonth)}.</p></section>
       )}
 
-      {groupLedgerBills(rows).map(({ type, bills }) => (
+      {!loadError && rows.length > 0 && visibleRows.length === 0 && (
+        <section className="panel"><p className="empty">All bills for {monthName(selectedMonth)} have been submitted.</p></section>
+      )}
+
+      {groupLedgerBills(visibleRows).map(({ type, bills }) => (
         <section className="panel" key={type}>
           <header>
             <strong>{type} Bills</strong>
@@ -100,19 +122,46 @@ export default async function BillsPage({ searchParams }) {
                 <tr><th>Bill</th><th>Type</th><th>Category</th><th>Account</th><th>Budget</th><th>Frequency</th><th>Next Due</th><th>Status</th><th>Actions</th></tr>
               </thead>
               <tbody>
-                {bills.map((bill) => (
-                  <tr key={bill.id}>
+                {bills.map((bill) => {
+                  const submitAmount = bill.remaining ?? bill.budget ?? 0;
+                  const canSubmit = bill.status !== 'submitted' && submitAmount > 0;
+                  return (
+                  <tr key={bill.id} id={`bill-${bill.id}`}>
                     <td><b>{bill.payee}</b>{bill.notes && <small>{bill.notes}</small>}</td>
                     <td>{bill.type}</td>
                     <td>{bill.category}</td>
                     <td>{bill.account}</td>
-                    <td>{bill.budget === null ? 'Enter amount' : money.format(Math.round(bill.budget))}</td>
+                    <td>
+                      <form className="inline-edit" action="/api/bills/update" method="post">
+                        <input type="hidden" name="id" value={bill.id} />
+                        <input type="hidden" name="month" value={selectedMonth} />
+                        <label className="sr-only" htmlFor={`budget-${bill.id}`}>Amount for {bill.payee}</label>
+                        <input id={`budget-${bill.id}`} name="budget" type="number" min="0.01" step="0.01" defaultValue={bill.budget ?? ''} placeholder="Amount" />
+                        <button type="submit">Save</button>
+                      </form>
+                    </td>
                     <td>{bill.frequency}</td>
                     <td>{displayDate(bill.nextDue)}</td>
                     <td><span className={`status ${bill.status}`}>{bill.status.replace('-', ' ')}</span></td>
-                    <td><span aria-label={`Actions for ${bill.payee}`}>—</span></td>
+                    <td>
+                      <div className="row-actions" aria-label={`Actions for ${bill.payee}`}>
+                        <a className="button ghost" href={`#budget-${bill.id}`}>Edit</a>
+                        <form action="/api/bills/archive" method="post">
+                          <input type="hidden" name="id" value={bill.id} />
+                          <input type="hidden" name="month" value={selectedMonth} />
+                          <button className="ghost danger" type="submit">Archive</button>
+                        </form>
+                        <form action="/api/bills/submit" method="post">
+                          <input type="hidden" name="id" value={bill.id} />
+                          <input type="hidden" name="month" value={selectedMonth} />
+                          <input type="hidden" name="amount" value={submitAmount} />
+                          <button type="submit" disabled={!canSubmit} title={canSubmit ? 'Submit payment' : 'Enter an amount before submitting'}>Submit</button>
+                        </form>
+                      </div>
+                    </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>

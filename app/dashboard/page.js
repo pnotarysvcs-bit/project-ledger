@@ -1,4 +1,4 @@
-import { getBillsMaster } from '../../src/bills-master.js';
+import { getLedgerBills } from '../../src/ledger-bills-data.js';
 import {
   getDueSoon,
   getMonthSummary,
@@ -39,10 +39,22 @@ export default async function DashboardPage({ searchParams }) {
   const now = new Date();
   const selectedMonth = resolveDashboardMonth(params?.month, now);
   const reportingDate = dateForDashboardMonth(selectedMonth);
-  const rows = getBillsMaster({ asOf: reportingDate });
+  const rows = (await getLedgerBills({ selectedMonth, asOf: reportingDate }))
+    .map((bill) => ({
+      ...bill,
+      amount: bill.budget ?? 0,
+      lastPaid: null,
+    }));
+  const currentMonth = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
+  const currentRows = (selectedMonth === currentMonth ? rows : await getLedgerBills({ selectedMonth: currentMonth, asOf: now }))
+    .map((bill) => ({
+      ...bill,
+      amount: bill.budget ?? 0,
+      lastPaid: null,
+    }));
 
   const summary = getMonthSummary(rows, { asOf: reportingDate });
-  const dueSoon = getDueSoon(getBillsMaster({ asOf: now }), { asOf: now, days: 7 });
+  const dueSoon = getDueSoon(currentRows, { asOf: now, days: 7 });
   const breakdown = getStatusBreakdown(rows, { asOf: reportingDate });
   const activity = getRecentActivity(rows);
   const segments = toRingSegments(breakdown, RING_CIRCUMFERENCE);
