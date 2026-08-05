@@ -1,4 +1,8 @@
+import Link from 'next/link';
+import { redirect } from 'next/navigation';
+import { revalidatePath } from 'next/cache';
 import { getLedgerBills, groupLedgerBills, summarizeLedgerBills } from '../src/ledger-bills-data.js';
+import { supabaseRequest } from '../src/supabase-server.js';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,6 +40,48 @@ function monthOptions(selectedMonth) {
     options.push({ value, label: monthName(value) });
   }
   return options;
+}
+
+
+async function archiveBill(formData) {
+  'use server';
+
+  const id = String(formData.get('id') ?? '');
+  const month = normalizeMonth(String(formData.get('month') ?? ''));
+  if (!id) throw new Error('Bill id is required.');
+
+  await supabaseRequest(`ledger_bills?id=eq.${encodeURIComponent(id)}&select=id`, {
+    method: 'PATCH',
+    headers: { Prefer: 'return=representation' },
+    body: { is_active: false, archived_at: new Date().toISOString() },
+  });
+
+  revalidatePath('/');
+  redirect(`/?month=${month}`);
+}
+
+async function submitBill(formData) {
+  'use server';
+
+  const id = String(formData.get('id') ?? '');
+  const month = normalizeMonth(String(formData.get('month') ?? ''));
+  const amount = Number(formData.get('amount'));
+  if (!id) throw new Error('Bill id is required.');
+  if (!Number.isFinite(amount) || amount <= 0) throw new Error('A positive payment amount is required.');
+
+  await supabaseRequest('ledger_bill_payments?select=id', {
+    method: 'POST',
+    headers: { Prefer: 'return=representation' },
+    body: {
+      bill_id: id,
+      amount,
+      payment_month: `${month}-01`,
+      payment_date: new Date().toISOString().slice(0, 10),
+    },
+  });
+
+  revalidatePath('/');
+  redirect(`/?month=${month}`);
 }
 
 export default async function BillsPage({ searchParams }) {
@@ -110,7 +156,22 @@ export default async function BillsPage({ searchParams }) {
                     <td>{bill.frequency}</td>
                     <td>{displayDate(bill.nextDue)}</td>
                     <td><span className={`status ${bill.status}`}>{bill.status.replace('-', ' ')}</span></td>
-                    <td><span aria-label={`Actions for ${bill.payee}`}>—</span></td>
+                    <td>
+                      <div className="row-actions" aria-label={`Actions for ${bill.payee}`}>
+                        <Link className="button ghost" href={`/?month=${selectedMonth}&edit=${bill.id}`}>Edit</Link>
+                        <form action={archiveBill}>
+                          <input type="hidden" name="id" value={bill.id} />
+                          <input type="hidden" name="month" value={selectedMonth} />
+                          <button className="ghost danger" type="submit">Archive</button>
+                        </form>
+                        <form action={submitBill}>
+                          <input type="hidden" name="id" value={bill.id} />
+                          <input type="hidden" name="month" value={selectedMonth} />
+                          <input type="hidden" name="amount" value={bill.remaining ?? bill.budget ?? 0} />
+                          <button type="submit" disabled={bill.status === 'submitted'}>Submit</button>
+                        </form>
+                      </div>
+                    </td>
                   </tr>
                 ))}
               </tbody>
