@@ -44,8 +44,10 @@ function appliesToMonth(bill, selected) {
   }
 }
 
-function calculateStatus({ explicitStatus, submitted, budget, dueDate, asOf }) {
-  if (explicitStatus) return explicitStatus;
+function calculateStatus({ submitted, budget, dueDate, asOf }) {
+  // Payment progress is month-specific. Never let a persisted status (for
+  // example, one written by a bulk update) mark a month as submitted without
+  // confirmed payments in that same month.
   if (budget !== null && submitted >= budget) return 'submitted';
   if (submitted > 0) return 'partial';
 
@@ -58,13 +60,11 @@ export async function getLedgerBills({ selectedMonth, asOf = new Date() } = {}) 
   const selected = monthStart(selectedMonth);
   const month = `${isoMonth(selected)}-01`;
 
-  const [bills, monthRows, payments] = await Promise.all([
+  const [bills, payments] = await Promise.all([
     supabaseRequest(`ledger_bills?select=id,bill_name,bill_type,category,account,budget,frequency,due_day,start_month,notes,is_active&is_active=eq.true&start_month=lte.${month}&order=bill_name.asc`),
-    supabaseRequest(`ledger_bill_months?select=bill_id,status&month=eq.${month}`),
     supabaseRequest(`ledger_bill_payments?select=bill_id,amount,payment_date&payment_month=eq.${month}`),
   ]);
 
-  const statusByBill = new Map(monthRows.map((row) => [row.bill_id, row.status]));
   const paymentsByBill = new Map();
   for (const payment of payments) {
     const current = paymentsByBill.get(payment.bill_id) ?? 0;
@@ -78,7 +78,6 @@ export async function getLedgerBills({ selectedMonth, asOf = new Date() } = {}) 
       const submitted = paymentsByBill.get(bill.id) ?? 0;
       const dueDate = dueDateForMonth(selected, bill.due_day);
       const status = calculateStatus({
-        explicitStatus: statusByBill.get(bill.id),
         submitted,
         budget,
         dueDate,
