@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 
 import { labelForKind, sortAccounts } from '../../src/accounts.js';
-import { loadAccounts } from '../../src/accounts-store.js';
 import { SAMPLE_BALANCES } from '../../src/sample-data.js';
 
 const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
@@ -24,10 +23,30 @@ function Sparkline({ points, tone }) {
 export default function AccountsSummary() {
   const [accounts, setAccounts] = useState([]);
   const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState(null);
 
   useEffect(() => {
-    setAccounts(loadAccounts());
-    setLoaded(true);
+    const controller = new AbortController();
+
+    async function load() {
+      try {
+        const response = await fetch('/api/accounts', {
+          cache: 'no-store',
+          signal: controller.signal,
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error ?? 'The request failed.');
+
+        setAccounts(data.accounts ?? []);
+      } catch (error) {
+        if (error.name !== 'AbortError') setLoadError(error.message);
+      } finally {
+        if (!controller.signal.aborted) setLoaded(true);
+      }
+    }
+
+    load();
+    return () => controller.abort();
   }, []);
 
   return (
@@ -39,11 +58,15 @@ export default function AccountsSummary() {
 
       {!loaded && <p className="muted">Loading accounts…</p>}
 
-      {loaded && accounts.length === 0 && (
+      {loaded && loadError && (
+        <p className="muted" role="alert">Accounts could not be loaded: {loadError}</p>
+      )}
+
+      {loaded && !loadError && accounts.length === 0 && (
         <p className="muted">No accounts yet. <a href="/accounts">Add one</a> to see it here.</p>
       )}
 
-      {loaded && accounts.length > 0 && (
+      {loaded && !loadError && accounts.length > 0 && (
         <ul className="account-list">
           {sortAccounts(accounts).map((account) => {
             const balance = SAMPLE_BALANCES[account.kind] ?? SAMPLE_BALANCES.checking;
