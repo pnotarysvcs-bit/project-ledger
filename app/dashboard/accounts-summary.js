@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 
 import { labelForKind, sortAccounts } from '../../src/accounts.js';
-import { loadAccounts } from '../../src/accounts-store.js';
+import { fetchActiveAccounts } from '../../src/accounts-client.js';
 import { SAMPLE_BALANCES } from '../../src/sample-data.js';
 
 const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
@@ -24,10 +24,23 @@ function Sparkline({ points, tone }) {
 export default function AccountsSummary() {
   const [accounts, setAccounts] = useState([]);
   const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState('');
 
   useEffect(() => {
-    setAccounts(loadAccounts());
-    setLoaded(true);
+    let cancelled = false;
+
+    fetchActiveAccounts()
+      .then((savedAccounts) => {
+        if (!cancelled) setAccounts(savedAccounts);
+      })
+      .catch((error) => {
+        if (!cancelled) setLoadError(error.message);
+      })
+      .finally(() => {
+        if (!cancelled) setLoaded(true);
+      });
+
+    return () => { cancelled = true; };
   }, []);
 
   return (
@@ -39,11 +52,15 @@ export default function AccountsSummary() {
 
       {!loaded && <p className="muted">Loading accounts…</p>}
 
-      {loaded && accounts.length === 0 && (
+      {loaded && loadError && (
+        <p className="error">{loadError}</p>
+      )}
+
+      {loaded && !loadError && accounts.length === 0 && (
         <p className="muted">No accounts yet. <a href="/accounts">Add one</a> to see it here.</p>
       )}
 
-      {loaded && accounts.length > 0 && (
+      {loaded && !loadError && accounts.length > 0 && (
         <ul className="account-list">
           {sortAccounts(accounts).map((account) => {
             const balance = SAMPLE_BALANCES[account.kind] ?? SAMPLE_BALANCES.checking;
