@@ -13,7 +13,7 @@ import {
 } from '../../src/dashboard-months.js';
 import { greetingForCentralTime } from '../../src/time-greeting.js';
 import { SAMPLE_CASH_FLOW, SAMPLE_SAVINGS_GOALS, SAMPLE_TIP } from '../../src/sample-data.js';
-import AccountsSummary from './accounts-summary.js';
+import PersistedAccountsSummary from './persisted-accounts-summary.js';
 import MonthSelector from './month-selector.js';
 
 // Every figure is relative to the selected reporting month, so the page is rendered per request.
@@ -200,7 +200,7 @@ export default async function DashboardPage({ searchParams }) {
           )}
         </article>
 
-        <AccountsSummary />
+        <PersistedAccountsSummary />
 
         <article className="widget">
           <header>
