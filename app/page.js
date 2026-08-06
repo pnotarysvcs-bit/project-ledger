@@ -164,12 +164,14 @@ export default async function BillsPage({ searchParams }) {
                           <input type="hidden" name="month" value={selectedMonth} />
                           <button className="ghost danger" type="submit">Archive</button>
                         </form>
-                        <form action={submitBill}>
-                          <input type="hidden" name="id" value={bill.id} />
-                          <input type="hidden" name="month" value={selectedMonth} />
-                          <input type="hidden" name="amount" value={bill.remaining ?? bill.budget ?? 0} />
-                          <button type="submit" disabled={bill.status === 'submitted'}>Submit</button>
-                        </form>
+                        {bill.status !== 'submitted' && (
+                          <form action={submitBill}>
+                            <input type="hidden" name="id" value={bill.id} />
+                            <input type="hidden" name="month" value={selectedMonth} />
+                            <input type="hidden" name="amount" value={bill.remaining ?? bill.budget ?? 0} />
+                            <button type="submit">Submit</button>
+                          </form>
+                        )}
                       </div>
                     </td>
                   </tr>
