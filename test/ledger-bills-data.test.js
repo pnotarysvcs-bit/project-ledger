@@ -74,3 +74,40 @@ test('one-time, quarterly, and annual bills follow their scheduled months', asyn
   assert.deepEqual(may.map((bill) => bill.id), ['monthly']);
   assert.deepEqual(july.map((bill) => bill.id), ['monthly', 'quarterly']);
 });
+
+test('bulk statuses do not carry submitted state into a month without payments', async (t) => {
+  process.env.SUPABASE_URL = 'https://example.supabase.co';
+  process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-key';
+
+  const bill = {
+    id: 'rent', bill_name: 'Rent', bill_type: 'Personal', category: 'Home',
+    account: 'TCU', budget: '1000', frequency: 'monthly', due_day: 15,
+    start_month: '2026-04-01', notes: null, is_active: true,
+  };
+
+  const originalFetch = global.fetch;
+  global.fetch = async (url) => {
+    const target = String(url);
+    if (target.includes('ledger_bills?')) return jsonResponse([bill]);
+    if (target.includes('ledger_bill_months?')) {
+      return jsonResponse([{ bill_id: bill.id, status: 'submitted' }]);
+    }
+    if (target.includes('ledger_bill_payments?')) return jsonResponse([]);
+    return new Response('Not found', { status: 404 });
+  };
+  t.after(() => { global.fetch = originalFetch; });
+
+  const [julyBill] = await getLedgerBills({
+    selectedMonth: '2026-07',
+    asOf: new Date('2026-08-06T00:00:00Z'),
+  });
+  const [augustBill] = await getLedgerBills({
+    selectedMonth: '2026-08',
+    asOf: new Date('2026-08-06T00:00:00Z'),
+  });
+
+  assert.equal(julyBill.status, 'overdue');
+  assert.equal(augustBill.status, 'due-soon');
+  assert.equal(augustBill.submitted, 0);
+  assert.equal(augustBill.remaining, 1000);
+});
