@@ -1,1118 +1,203 @@
-# Project Ledger – Bills and Dashboard Enhancement Handoff
+# Project Ledger — Bills & Dashboard Authoritative Requirements
+
+**Document:** Project-Ledger-Bills-Dashboard-README (Authoritative)
+**Status:** Approved (authoritative doc for bills + dashboard behavior)
+**Version:** 1.1.0
+**Approval Date:** 2026-08-07
 
 ## Purpose
 
-This README serves as the authoritative implementation specification for the Project Ledger Bills workspace and Dashboard enhancements.
+This authoritative README consolidates the approved Phase 1 Bills requirements and Dashboard clarifications approved during review. It augments the Phase 1 specification where required and preserves existing requirement IDs where possible. Use this file as the single source of truth for implementation and review until a later merge updates other artifacts.
 
-The implementation must establish the underlying data framework, persistence model, calculation services, and business rules before layout-level changes are completed.
+## Summary of Key Changes (applies to implementation and acceptance)
 
-The objective is to ensure that bill status, payment activity, summary cards, Dashboard metrics, and monthly overview values are calculated consistently from one persistent source of truth.
+- Introduce distinct Budget Amount and Actual Bill Amount concepts per monthly bill occurrence.
+- Allow Actual Bill Amount to be lower than cumulative payments and support overpayments preserved as credits.
+- Define Remaining Balance and Credit Amount using explicit formulas and require preservation of payment transactions.
+- Add funding_account and optional notes to server-side dependency D-002 and to all payment workflows and persisted payment records.
+- Correct the handoff prompt and references to point to this file: Project-Ledger-Bills-Dashboard-README.md.
+- Make confirmed payment records the financial source of truth for Submit, Bulk Submit, Partial, and Submitted/Paid derived statuses.
+- Define monthly bill occurrences so each month starts with blank status, zero payments, and a fresh occurrence while preserving prior-month history and preventing historical rewrite.
+- Define period-effective archive/retirement behavior and retention semantics so historical reporting is not rewritten.
+- Preserve the TCUB = Business and TCU = Personal classification rules and enforce that Type must not be independently editable when account mapping applies.
+- Clarify Next Due edit semantics to affect only the selected occurrence unless the user explicitly edits the recurring master schedule.
+- Treat active bills with no Budget or Actual amount as incomplete records excluded from financial reconciliation until corrected.
+- Enforce Overdue precedence consistently across Bills workspace and Dashboard for partially paid overdue bills.
 
----
+## Definitions
 
-## Implementation Directive
+- Budget Amount: The planned or budgeted amount for a bill occurrence in a reporting month. Stored on the master bill and copied to a new monthly occurrence when applicable unless explicitly overridden.
 
-Review the current repository and implement the requirements in this document exactly as written.
+- Actual Bill Amount: The invoiced or confirmed dollar amount for a specific monthly occurrence. Actual Bill Amount may differ from Budget Amount and may be lower than cumulative payments.
 
-Do not change the existing visual design, navigation, typography, colors, table structure, or layout except where this README explicitly requires a new button, card, label, or status.
+- Payments Made: The sum of one or more confirmed payment transactions attached to a monthly occurrence. Each payment includes: payment date, amount, funding_account (required), and optional notes.
 
-Implementation order:
+- Remaining Balance = max(Actual Bill Amount - Payments Made, 0)
 
-1. Data model and persistence
-2. Shared business-rule and calculation services
-3. Submit, Partial, Edit, Archive, and Bulk Submit workflows
-4. Bills workspace summary cards
-5. Dashboard summary cards
-6. This Month Overview status alignment
-7. Automated tests and reconciliation validation
-8. UI integration and regression testing
+- Credit Amount = max(Payments Made - Actual Bill Amount, 0)
 
-Before modifying code, inspect the current implementation and provide:
+- Confirmed Payment Record: A persisted payment transaction that has been saved and confirmed by the database; these records are the financial source of truth for status derivation.
 
-- Affected files
-- Proposed implementation plan
-- Existing conflicts with this README
-- Required data-model changes
-- Required API changes
-- Any unresolved requirements requiring clarification
+- Monthly Occurrence: A period-scoped instance of a bill for a calendar month. An occurrence has its own Actual Bill Amount (nullable), Payments Made (zero or more persisted payment records), Status, and occurrence-level Next Due.
 
-Do not begin implementation until the implementation plan has been reviewed and approved.
+## Business Rules (preserve and extend)
 
----
+- RULE-001 — Bills Master Authority (unchanged)
+  - Bills Master remains the authoritative source for bill definitions.
 
-## Scope
+- RULE-002 — Database Persistence Required (unchanged)
+  - A bill or payment change is not complete until persistent storage confirms it.
 
-This implementation includes:
+- RULE-003 — TCUB Classification (preserved)
+  - Prefixes beginning with `TCUB` are Business.
 
-- Bills workspace row actions
-- Full-payment submission behavior
-- Multiple partial-payment transactions
-- Bill editing
-- Bill retirement through Archive
-- Bulk Submit for previous months
-- Bills summary-card calculations
-- Dashboard summary-card calculations
-- This Month Overview status classification
-- Shared persistence and calculation logic
-- Automated tests for all calculations and state transitions
+- RULE-004 — TCU Classification (preserved)
+  - Prefixes beginning with `TCU`, after excluding `TCUB`, are Personal.
 
-This implementation excludes:
+- RULE-005 — Prefix Evaluation Order (preserved)
+  - `TCUB` must be evaluated before `TCU`.
 
-- Unapproved visual redesign
-- Navigation redesign
-- Permanent deletion of bill records
-- New reporting modules unless required to preserve archived history
-- Overpayment support unless separately approved
+- RULE-006 — Category Cannot Override Prefix (preserved)
+  - A stale form category or client-side value cannot override the canonical prefix-derived classification.
 
----
+- RULE-007 — Monthly Status Separation (clarified)
+  - Month-specific status and month-specific occurrence fields (Actual Bill Amount, occurrence-level Next Due, payments list) must be stored separately from the durable Bills Master definition.
 
-## Core Terminology
+- RULE-008 — Confirmed Payments as Source of Truth (new — RULE-100)
+  - Confirmed payment records are the authoritative financial input for deriving Submitted, Partial, and Submitted/Paid statuses and for calculating Remaining Balance and Credit Amount. UI-only or unconfirmed entries must not influence canonical status.
 
-### BR-001 — Submit Means Paid
+- RULE-009 — Occurrence Fresh-Start (new — RULE-101)
+  - Each month’s new occurrence starts with: blank Status (no implicit Submitted/Paid), zero Payments Made, and Actual Bill Amount copied from Budget (or left null if no Budget). Prior occurrences are preserved as immutable historical rows for reporting.
 
-Within Project Ledger, clicking **Submit** means the bill has been paid in full.
+- RULE-010 — Period-Effective Archive/Retire (new — RULE-102)
+  - Archive or retirement actions are period-effective: when an archive is applied with an effective period, it prevents new occurrences after that period but does not rewrite or remove historical occurrences used for prior reporting.
 
-The system may continue to display the user-facing label **Submitted**, but the corresponding business state is **Paid in Full**.
+- RULE-011 — Type Mapping and Editability (new — RULE-103)
+  - When account/funding mapping determines Type (Business/Personal) via TCUB/TCU rules, the Type field must not be independently editable in the UI unless the mapping is explicitly cleared or overridden through an approved admin workflow.
 
-### BR-002 — Partial
+- RULE-012 — Overdue Precedence (new — RULE-104)
+  - Overdue status takes precedence for a monthly occurrence when the due date has passed and Submitted Total (sum of confirmed payment records) is below the Actual Bill Amount (or Budget if Actual is null). This precedence must be applied consistently in both Bills and Dashboard calculations.
 
-A bill is Partial when one or more payments have been recorded and the cumulative payment total is less than the bill amount.
+- RULE-013 — Incomplete Active Bills (new — RULE-105)
+  - Active bills that lack both Budget and Actual Bill Amount for the occurrence are treated as incomplete records and are excluded from financial reconciliation and Headline Budget totals until corrected; they remain visible to users for editing.
 
-### BR-003 — Archived
+## Functional Requirements (additions and clarifications)
 
-An Archived bill is retired and must be removed from the active interface while remaining available for historical reporting and audit purposes.
+- FR-001 — List Bills (unchanged)
+  - The Bills workspace must retrieve and display persisted Bills Master records and their occurrences.
 
-### BR-004 — Single Source of Truth
+- FR-002 — Add Bill (unchanged)
+  - The user must be able to add a bill using the approved editable fields.
 
-The Bills workspace, Dashboard, and This Month Overview must use the same persisted bill and payment data and the same shared calculation services.
+- FR-003 — Edit Bill (clarified)
+  - Edits to the master bill alter the durable Bills Master. Edits to occurrence fields (Actual Bill Amount, occurrence-level Next Due, payments) must affect only the selected occurrence unless the user explicitly elects to update the master recurring schedule.
 
----
+- FR-004 — Persist Add and Edit (unchanged)
+  - Add and Edit operations must write through a server-side API or service to persistent storage.
 
-# Bills Workspace Requirements
+- FR-005 — Database-Confirmed Success (unchanged)
 
-## FR-001 — Bill Row Action Order
+- FR-006 — Refresh Retention (unchanged)
 
-Each active bill row must display actions in this order:
+- FR-007 — Monthly Status Update (clarified)
+  - Status updates for a selected month must be derived from confirmed payments and occurrence fields; manual status overrides are disallowed except where explicitly approved and traceably audited.
 
-**Submit | Partial | Edit | Archive**
+- FR-008 — Archive Bill (clarified)
+  - Archiving operations may be master-level (affects future occurrences) or period-effective (retire occurrences after an effective date) and must not delete historical occurrences used for reporting.
 
-Required styling:
+- FR-009 — Delete Bill (unchanged — maintain safeguards)
 
-- Submit: green while unpaid
-- Partial: yellow while an outstanding balance exists
-- Edit: green
-- Archive: preserve current approved Archive styling
+- FR-010 — Active State (unchanged)
 
-The Submit button must remain visible after selection and become greyed out and disabled.
+- FR-011 — Payment Transactions (new — FR-101)
+  - Persisted payment records must include: payment date, amount, funding_account (required), optional notes. Payment records must be editable and deletable with the same persistence guarantees as bills.
 
----
+- FR-102 — Overpayment Handling (new)
+  - Preserve payment transactions when total Payments Made exceeds Actual Bill Amount. Excess must be recorded as an overpayment/account credit on the bill occurrence and as a persisted credit record linked to the funding_account and the bill occurrence.
 
-## FR-002 — Submit Button Behavior
+- FR-103 — Remaining and Credit Calculations (new)
+  - Implement Remaining Balance and Credit Amount calculations at occurrence level using the formulas in Definitions. Remaining must never be negative; Credit must be >= 0.
 
-When the user clicks **Submit**, the system must:
+- FR-104 — funding_account & notes Inclusion (update — D-002 & FR list)
+  - Add funding_account and optional notes to the server-side dependency D-002 and to all payment workflows, persisted payment records, and API contracts.
 
-1. Treat the bill as paid in full.
-2. Persist the status as Submitted/Paid.
-3. Display **Submitted** as a blue status badge.
-4. Change the Submit button from green to grey.
-5. Disable the Submit button.
-6. Set the remaining balance to `$0.00`.
-7. Include the full bill amount in Submitted and Total Paid calculations.
-8. Exclude the bill from Remaining, Due Soon, Overdue, Partial, and Future calculations where applicable.
-9. Prevent duplicate submission.
-10. Preserve the state after refresh, navigation, logout, and deployment.
+- FR-105 — Confirmed Payments Drive Status (new)
+  - Status derivation for Submit, Bulk Submit, Partial, and Submitted/Paid must use confirmed payment records only. Submitted status (or Paid equivalent in computed UI) is true when Payments Made >= Actual Bill Amount (or Budget if Actual is null) and confirmed payment records support the amount.
 
-The Submit button must not be removed from the interface.
+- FR-106 — Next Due Editing Scope (new)
+  - Editing Next Due on an occurrence changes only that occurrence’s Next Due unless the user selects an explicit option to propagate the date change to the recurring master schedule and future occurrences.
 
----
+## Dependencies (update)
 
-## FR-003 — Partial Payment Button
+- D-001 — Supabase environment (unchanged)
+  - The existing Supabase environment is the approved persistence platform.
 
-Add a yellow **Partial** button to each active bill row with an outstanding balance.
+- D-002 — Server-side configuration and payment fields (updated)
+  - Server-side Supabase configuration must be valid in Vercel Preview and Production and must include schema support for persisted payment records with at least: payment_id, occurrence_id, payment_date, amount, funding_account (required), notes (optional), created_by, created_at, confirmed_flag. Ensure API routes accept and validate funding_account and notes in payment workflows.
 
-When clicked, the system must open a payment-entry interface for the selected bill.
+- D-003 — Bills workspace API (unchanged but extended)
+  - The Bills workspace must have a supported API, repository, or service layer for persistence that supports occurrence-level operations and payment transaction persistence.
 
-The user must be able to enter:
+- D-004 — Dashboard data source (unchanged)
+  - The Dashboard must consume the same approved Bills Master + occurrences + payments persisted data source where totals are displayed.
 
-- Payment amount
-- Payment date
+## Acceptance Criteria (clarifications and additions)
 
-The system must support several partial payments against the same bill during the same selected month.
+- AC-015 — Month-specific status persists (clarified)
+  - Given a selected month, when the user updates or creates confirmed payment records, the occurrence’s status and Payments Made persist for that month. Status is derived from confirmed payments and occurrence Actual Bill Amount.
 
-Each partial payment must be retained as a separate transaction and must not overwrite prior payments.
+- AC-016 — Master vs Occurrence (clarified)
+  - Given a monthly status update or Next Due edit, when a different month is selected, the master bill definition remains intact and the correct month-specific occurrence is shown. Next Due edits affect only the selected occurrence unless explicitly propagated.
 
-Required calculations:
+- AC-017 — Dashboard/Bills reconciliation (updated)
+  - Given Dashboard and Bills workspace display bill totals for the same month, when both load, then totals reconcile to the same persisted Bills Master + occurrences + confirmed payments source and rule-set (including Remaining and Credit calculations and Overdue precedence).
 
-```text
-Cumulative Partial Paid = Sum of all partial-payment transactions for the bill and selected month
-Remaining Balance = Bill Amount - Cumulative Partial Paid
-```
+- AC-020 — Payment fields persisted (new)
+  - Given a user adds a payment with funding_account and optional notes, when the payment is saved, then the persisted payment record contains funding_account, notes (nullable), and all required metadata and survives refresh.
 
-Required behavior:
+- AC-021 — Overpayment preserved (new)
+  - Given Payments Made > Actual Bill Amount, when payments are confirmed, then excess is preserved as an overpayment/account credit linked to the occurrence and funding_account and does not erase payment transaction history.
 
-- Display cumulative amount paid.
-- Display remaining balance.
-- Display a yellow **Partial** status badge while the bill has an outstanding balance.
-- Update Bills and Dashboard totals immediately.
-- Persist payment history after refresh, navigation, logout, and deployment.
-- Prevent cumulative payments from exceeding the bill amount unless an overpayment rule is later approved.
-- Allow an incorrect partial-payment transaction to be reviewed, edited, or removed.
-- Preserve an audit history where supported.
+- AC-022 — Incomplete active bills excluded (new)
+  - Given an active bill occurrence with no Budget and no Actual Bill Amount, when the month is included in a reconciliation, then the occurrence is excluded from budget totals and flagged to the user as incomplete until corrected.
 
-### FR-003A — Automatic Completion
+## Data Model Notes (developer guidance)
 
-When cumulative partial payments equal the full bill amount, the system must:
+- Occurrence table (example fields): occurrence_id, bill_master_id, occurrence_month (YYYY-MM), actual_amount (nullable), status, next_due (nullable), created_at.
 
-1. Change the bill to Submitted/Paid.
-2. Display the blue Submitted badge.
-3. Set the remaining balance to `$0.00`.
-4. Grey out and disable the Submit button.
-5. Remove the bill from Partial status.
-6. Include the full bill amount in Submitted and Total Paid.
-7. Preserve all individual payment transactions.
+- Payments table (example fields): payment_id, occurrence_id, payment_date, amount, funding_account, notes (nullable), created_by, created_at, confirmed_flag.
 
----
+- Credits/Overpayments table (example fields): credit_id, occurrence_id, amount, funding_account, created_at, reason.
 
-## FR-004 — Edit Button
+- Master bill must retain Budget and recurring schedule fields. When a new occurrence is created for a month, copy Budget into occurrence.actual_amount unless a separate Actual amount is provided or Budget is intentionally left null.
 
-When the user clicks **Edit**, the system must allow all approved editable fields to be changed.
+## UI & UX Notes
 
-Required editable fields:
+- The handoff prompt, documentation pointers, and any automated messages must reference this file: Project-Ledger-Bills-Dashboard-README.md.
 
-- Bill name
-- Type
-- Category
-- Account
-- Monthly budget amount
-- Frequency
-- Next due date
-- Status, where permitted by business rules
+- When editing Next Due from the occurrence UI, show a clear control: "Change only this occurrence" (default) and "Also update recurring schedule" (opt-in). Provide an audit trail for propagation.
 
-When changes are saved, the system must:
+- When a payment is added, require selection of funding_account. Allow optional free-text notes on the payment record.
 
-1. Validate all required fields.
-2. Update the existing persistent Bills Master record.
-3. Retain the existing unique identifier.
-4. Prevent duplicate bill creation.
-5. Refresh the affected row.
-6. Recalculate all affected Bills and Dashboard values.
-7. Preserve the changes after refresh, navigation, logout, and deployment.
+- When Payments Made exceed the Actual Bill Amount, show Credit Amount beside Remaining (0) and link to the overpayment account credit record.
 
-If a bill amount is changed after partial payments already exist, the system must recalculate the remaining balance and status.
+- Overdue precedence: if due date passed and Submitted Total < Actual Bill Amount, mark Overdue, even if partial payments exist.
 
----
+## Traceability and Changed Sections
 
-## FR-005 — Archive Button
+The following existing sections/IDs in the Phase 1 baseline are updated or supplemented by this authoritative README. Implementers should treat these IDs as changed in-place for the purpose of the current feature branch and testing:
 
-When the user clicks **Archive**, the system must:
+- Dependencies: D-002 (updated to require funding_account and optional notes persisted for payments)
+- Business Rules: RULE-007 (clarified monthly separation); new RULE-100..RULE-105 added (payments source-of-truth, occurrence fresh-start, period-effective archive, type mapping editability, overdue precedence, incomplete bills)
+- Functional Requirements: FR-007 (clarified status derivation); new FR-101..FR-106 added (payment persistence, overpayment handling, calculations, funding_account requirement, confirmed payments drive status, Next Due editing scope)
+- Acceptance Criteria: AC-015, AC-016, AC-017 (clarified to reference confirmed payments and occurrence-level fields); new AC-020..AC-022 added
 
-1. Treat the bill as retired.
-2. Persist an archived or inactive state.
-3. Remove the bill from the active Bills interface immediately.
-4. Preserve the bill record and payment history.
-5. Exclude the bill from all active calculations and counts.
+## Implementation notes for reviewers
 
-Archived bills must be excluded from:
+- Do not change application code in this commit. Update only this authoritative README file in the feature branch.
+- Preserve existing requirement IDs where possible; new IDs in the 100+ range are used for additions to avoid collisions.
+- The master bill schema must not be rewritten to retroactively change closed, prior occurrences used for historical reporting.
 
-- Active Bills
-- Total Budget
-- Submitted
-- Partial
-- Remaining
-- Due Soon
-- Overdue
-- Future
-- Total Paid
-- This Month Overview
+## Change Log
 
-Archive must not permanently delete the bill.
-
----
-
-## FR-006 — Bulk Submit for Previous Months
-
-Add a **Bulk Submit** action for previous months.
-
-The action must:
-
-1. Appear only when a month before the current month is selected.
-2. Apply only to the selected month.
-3. Include all eligible unpaid bills.
-4. Exclude Submitted/Paid bills.
-5. Exclude Archived bills.
-6. Exclude otherwise ineligible bills.
-7. Require user confirmation.
-8. Mark all eligible bills as Submitted/Paid.
-9. Display the blue Submitted badge on each affected bill.
-10. Grey out and disable each affected Submit button.
-11. Set each affected remaining balance to `$0.00`.
-12. Recalculate all monthly summary cards and Dashboard values.
-13. Display the number of bills successfully submitted.
-
-Bulk Submit must not affect the current month or any other month.
-
----
-
-# Bills Workspace Summary Cards
-
-## FR-007 — Summary Card Order
-
-Display Bills workspace summary cards in this order:
-
-**Total Budget | Submitted | Partial | Remaining | Due Soon**
-
-Preserve the current visual design. Add approved yellow styling for the Partial card.
-
----
-
-## FR-008 — Total Budget Card
-
-The **Total Budget** card must equal the sum of full monthly bill amounts for all active, non-archived bills in the selected month.
-
-```text
-Total Budget = Sum of full bill amounts for active bills in the selected month
-```
-
-Include:
-
-- Unpaid bills
-- Partial bills
-- Submitted/Paid bills
-
-Exclude:
-
-- Archived bills
-
-Rules:
-
-- Partial payments must not reduce Total Budget.
-- Several partial payments toward one bill must not cause duplicate counting.
-- Add, Edit, and Archive actions must immediately update Total Budget.
-
----
-
-## FR-009 — Submitted Card
-
-The **Submitted** card must equal the full amount of bills that have been submitted and are therefore paid in full.
-
-```text
-Submitted Total = Sum of full bill amounts for Submitted/Paid bills
-```
-
-Include:
-
-- Individual Submit
-- Bulk Submit
-- Bills completed through cumulative partial payments
-
-Exclude:
-
-- Unpaid bills
-- Bills that remain partially paid
-- Archived bills
-
-The associated bill count must equal the number of Submitted/Paid bills.
-
-Partial-payment amounts must not be included until the bill is fully paid.
-
----
-
-## FR-010 — Partial Card
-
-Add a yellow **Partial** summary card.
-
-The card must display the cumulative amount already paid toward bills that remain partially paid.
-
-```text
-Partial Total = Sum of partial-payment transactions for bills currently in Partial status
-```
-
-Include:
-
-- All partial payments for bills with an outstanding balance
-- Several payments toward the same bill
-
-Exclude:
-
-- Unpaid bills with no payments
-- Fully Submitted/Paid bills
-- Archived bills
-
-The card count must count each partially paid bill once, regardless of the number of payment transactions.
-
-Once the bill becomes fully paid, it must leave Partial and move to Submitted.
-
----
-
-## FR-011 — Remaining Card
-
-The **Remaining** card must display the total outstanding balance across all unpaid and partially paid bills.
-
-```text
-Remaining Total = Sum of outstanding balances for active bills not paid in full
-```
-
-At the bill level:
-
-- Unpaid bill: remaining balance equals full bill amount.
-- Partial bill: remaining balance equals bill amount minus cumulative payments.
-- Submitted/Paid bill: remaining balance equals `$0.00`.
-
-Exclude:
-
-- Submitted/Paid bills
-- Archived bills
-
-Remaining must never be below `$0.00`.
-
----
-
-## FR-012 — Due Soon Card
-
-The **Due Soon** card must display the outstanding amount for active bills due within the next seven calendar days.
-
-```text
-Due Soon Total = Sum of outstanding balances for eligible bills due within the next 7 days
-```
-
-Include:
-
-- Bills due today
-- Unpaid bills due within seven days
-- Partial bills due within seven days, using only the outstanding balance
-
-Exclude:
-
-- Submitted/Paid bills
-- Archived bills
-- Bills with a `$0.00` balance
-- Overdue bills unless the existing runbook explicitly defines them as Due Soon
-
-The count must equal eligible bill records, not payment transactions.
-
----
-
-## BR-005 — Bills Workspace Reconciliation
-
-The following calculation must reconcile for every selected month:
-
-```text
-Total Budget = Submitted Total + Partial Total + Remaining Total
-```
-
-Definitions:
-
-- Submitted = full scheduled amount of bills paid in full
-- Partial = payment amounts already applied to bills that remain partially paid
-- Remaining = outstanding balance of unpaid and partially paid bills
-
-No amount may be counted twice.
-
----
-
-# Dashboard Requirements
-
-## FR-013 — Shared Dashboard Data
-
-The Dashboard must use the same persisted Bills Master records and calculation services as the Bills workspace.
-
-The Dashboard must not use:
-
-- Placeholder values
-- Hard-coded values
-- Duplicate local-only state
-- Separate calculation logic
-- Payment-transaction counts where bill-record counts are required
-
----
-
-## FR-014 — Active Bills Card
-
-The **Active Bills** card must equal the exact number of active, non-archived bills in the selected month.
-
-```text
-Active Bills Count = Count of active, non-archived bill records in selected month
-```
-
-Include:
-
-- Unpaid bills
-- Partial bills
-- Submitted/Paid bills that remain active bill records
-
-Exclude:
-
-- Archived bills
-
-Each bill must be counted once, regardless of payment frequency or number of payment transactions.
-
-The count must match the active bill records represented on the Bills tab for the same month.
-
----
-
-## FR-015 — Overdue Card
-
-The **Overdue** card must equal the exact number of active bills with a due date before today and an outstanding balance greater than `$0.00`.
-
-```text
-Overdue Count = Count of active bills where due date < today and remaining balance > 0
-```
-
-Include:
-
-- Unpaid overdue bills
-- Partially paid overdue bills with an outstanding balance
-
-Exclude:
-
-- Submitted/Paid bills
-- Archived bills
-- Bills with a `$0.00` balance
-
-Each overdue bill must be counted once.
-
----
-
-## FR-016 — Rename Dashboard Remaining Card to Partial
-
-Change the Dashboard card currently labeled **Remaining** to **Partial**.
-
-The Dashboard Partial card must display the same amount as the Partial card on the Bills workspace.
-
-```text
-Dashboard Partial Total = Bills Workspace Partial Total
-```
-
-Include cumulative payments for bills that remain in Partial status.
-
-Exclude:
-
-- Unpaid bills
-- Submitted/Paid bills
-- Archived bills
-
----
-
-## FR-017 — Total Paid Card
-
-The Dashboard **Total Paid** card must equal the full dollar amount of bills marked Submitted/Paid.
-
-```text
-Total Paid = Sum of full bill amounts for Submitted/Paid bills
-```
-
-Include:
-
-- Individual Submit
-- Bulk Submit
-- Bills completed through cumulative partial payments
-
-Exclude:
-
-- Unpaid bills
-- Bills that remain partially paid
-- Archived bills
-
-Required reconciliation:
-
-```text
-Dashboard Total Paid = Bills Workspace Submitted Total
-```
-
----
-
-# This Month Overview Requirements
-
-## FR-018 — Replace Pending Status
-
-Remove the current **Pending** label from the Dashboard This Month Overview section.
-
-Replace it with:
-
-**Submitted | Partial | Overdue | Future**
-
-The status classifications must match the Bills tab for the same selected month.
-
----
-
-## FR-019 — Submitted Overview Status
-
-A bill is Submitted when it is paid in full.
-
-Include:
-
-- Individual Submit
-- Bulk Submit
-- Bills completed through cumulative partial payments
-
-Exclude:
-
-- Partial bills
-- Archived bills
-
-Displayed amount:
-
-```text
-Submitted Amount = Full bill amount for Submitted/Paid bills
-```
-
----
-
-## FR-020 — Partial Overview Status
-
-A bill is Partial when:
-
-- One or more payments exist.
-- The bill is not paid in full.
-- The bill is not overdue.
-
-Count each bill once.
-
-Displayed amount:
-
-```text
-Partial Amount = Cumulative amount paid toward non-overdue bills currently in Partial status
-```
-
-Exclude:
-
-- Submitted/Paid bills
-- Unpaid bills with no payments
-- Overdue bills
-- Archived bills
-
-An overdue bill with partial payments must be classified as Overdue, not Partial.
-
----
-
-## FR-021 — Overdue Overview Status
-
-A bill is Overdue when:
-
-- Its due date is before today.
-- It has an outstanding balance greater than `$0.00`.
-
-Include:
-
-- Fully unpaid overdue bills
-- Partially paid overdue bills
-
-Exclude:
-
-- Submitted/Paid bills
-- Archived bills
-
-Displayed amount:
-
-```text
-Overdue Amount = Outstanding balance of overdue bills
-```
-
-Overdue takes precedence over Partial and Future.
-
----
-
-## FR-022 — Future Overview Status
-
-A bill is Future when:
-
-- It is unpaid.
-- It has no partial payments.
-- Its due date is today or later.
-- It is not overdue.
-
-Displayed amount:
-
-```text
-Future Amount = Outstanding balance of unpaid future bills
-```
-
-Exclude:
-
-- Submitted bills
-- Partial bills
-- Overdue bills
-- Archived bills
-
-Bills due today are Future unless already Submitted or Partial.
-
----
-
-## BR-006 — Status Precedence
-
-Apply This Month Overview status classification in this order:
-
-1. Submitted
-2. Overdue
-3. Partial
-4. Future
-
-Each active bill must appear in only one status category.
-
----
-
-## BR-007 — Overview Count Reconciliation
-
-For the selected month:
-
-```text
-Active Bills Count = Submitted Count + Overdue Count + Partial Count + Future Count
-```
-
-Each bill must be counted once.
-
-The authoritative financial reconciliation remains:
-
-```text
-Total Budget = Submitted + Partial Payments + Remaining Outstanding Balance
-```
-
----
-
-# System-Wide Requirements
-
-## NFR-001 — Persistence
-
-The following must persist after refresh, navigation, logout, and deployment:
-
-- Bill records
-- Bill amounts
-- Bill due dates
-- Bill statuses
-- Submitted/Paid state
-- Archived state
-- Individual partial-payment transactions
-- Cumulative partial-payment totals
-- Remaining balances
-
-The UI must not display a successful update unless the persistent operation completes successfully.
-
----
-
-## NFR-002 — Immediate Recalculation
-
-The following actions must immediately recalculate all affected Bills and Dashboard values:
-
-- Add Bill
-- Submit
-- Bulk Submit
-- Add Partial Payment
-- Edit Partial Payment
-- Remove Partial Payment
-- Edit Bill
-- Archive Bill
-- Change selected month
-
-No manual page refresh may be required.
-
----
-
-## NFR-003 — Shared Calculation Service
-
-All financial totals, bill counts, and status classifications must be derived through shared calculation services.
-
-The Bills workspace and Dashboard must not implement independent versions of the same business logic.
-
----
-
-## NFR-004 — Data Integrity
-
-The implementation must prevent:
-
-- Duplicate bill creation during Edit
-- Duplicate submission
-- Duplicate counting of bills
-- Duplicate counting of partial-payment transactions
-- Negative remaining balances
-- Archived bills appearing in active totals
-- Cross-month Bulk Submit updates
-- UI success states when persistence fails
-
----
-
-## NFR-005 — Backward Compatibility
-
-Where the existing system stores a technical status named `submitted`, the implementation may preserve that technical value for backward compatibility, provided the business meaning remains Paid in Full and all user-facing calculations behave accordingly.
-
----
-
-## NFR-006 — UI Guardrails
-
-Do not change the existing:
-
-- Overall visual design
-- Navigation
-- Typography
-- Established color palette
-- Table structure
-- Layout conventions
-
-Permitted changes are limited to those explicitly required in this README:
-
-- Yellow Partial button
-- Yellow Partial card
-- Blue Submitted status badge
-- Grey disabled Submit state
-- Bulk Submit action
-- Label changes
-- This Month Overview status changes
-
----
-
-# Data Model Expectations
-
-## D-001 — Bill Record
-
-Each bill record should support, at minimum:
-
-- Stable unique identifier
-- Name
-- Type
-- Category
-- Account
-- Monthly amount
-- Frequency
-- Due date
-- Selected month or billing-period association
-- Active status
-- Archived status
-- Submitted/Paid status
-- Created timestamp
-- Updated timestamp
-
----
-
-## D-002 — Payment Transaction
-
-Each partial-payment transaction should support, at minimum:
-
-- Stable unique identifier
-- Bill identifier
-- Billing month or period
-- Payment amount
-- Payment date
-- Created timestamp
-- Updated timestamp
-- Deleted or reversed state, if soft deletion is used
-
-Payments must not be stored only as a cumulative value. Individual transactions must remain available.
-
----
-
-## D-003 — Derived Values
-
-The following should be derived, not independently maintained where avoidable:
-
-- Cumulative Partial Paid
-- Remaining Balance
-- Submitted Total
-- Partial Total
-- Remaining Total
-- Due Soon Total
-- Active Bills Count
-- Overdue Count
-- Total Paid
-- This Month Overview status
-
----
-
-# Required Automated Tests
-
-## T-001 — Submit Tests
-
-Verify:
-
-- Submit marks bill paid in full.
-- Submitted badge displays.
-- Submit button remains visible, grey, and disabled.
-- Remaining balance becomes zero.
-- State persists.
-- Duplicate Submit is blocked.
-
-## T-002 — Partial Payment Tests
-
-Verify:
-
-- Multiple partial payments can be entered.
-- Each payment remains a separate transaction.
-- Cumulative paid is correct.
-- Remaining balance is correct.
-- Partial badge displays.
-- Bill automatically becomes Submitted/Paid at full payment.
-- Overpayment is blocked.
-- Edit and removal of partial payments recalculate totals correctly.
-
-## T-003 — Edit Tests
-
-Verify:
-
-- All approved fields are editable.
-- Existing ID remains unchanged.
-- No duplicate bill is created.
-- Totals recalculate correctly.
-- Changes persist.
-
-## T-004 — Archive Tests
-
-Verify:
-
-- Archived bill disappears from active UI.
-- Bill remains in persistent storage.
-- Payment history remains available.
-- Archived bill is excluded from all active counts and totals.
-
-## T-005 — Bulk Submit Tests
-
-Verify:
-
-- Action appears only for previous months.
-- Only selected month is affected.
-- Eligible bills are submitted.
-- Submitted and archived bills are excluded.
-- Summary values recalculate correctly.
-
-## T-006 — Card Calculation Tests
-
-Verify for each selected month:
-
-```text
-Total Budget = Submitted + Partial + Remaining
-```
-
-Verify:
-
-- Total Budget uses active full bill amounts.
-- Submitted uses full amounts of paid bills.
-- Partial uses payments for bills still partially paid.
-- Remaining uses outstanding balances.
-- Due Soon uses outstanding balances due in seven days.
-- No duplicate counting occurs.
-
-## T-007 — Dashboard Synchronization Tests
-
-Verify:
-
-```text
-Dashboard Total Paid = Bills Submitted Total
-Dashboard Partial Total = Bills Partial Total
-Dashboard Active Bills Count = Active non-archived bill count
-Dashboard Overdue Count = Active overdue bills with outstanding balance
-```
-
-## T-008 — Overview Status Tests
-
-Verify:
-
-- Pending is removed.
-- Submitted, Partial, Overdue, and Future display.
-- Each active bill appears in one status only.
-- Status precedence is enforced.
-- Counts reconcile to Active Bills.
-
----
-
-# Acceptance Criteria
-
-## AC-001
-
-Unpaid active bills display a green Submit button.
-
-## AC-002
-
-The Submit button remains visible after selection but becomes grey and disabled.
-
-## AC-003
-
-Clicking Submit means the bill is paid in full.
-
-## AC-004
-
-Submitted bills display a blue Submitted badge.
-
-## AC-005
-
-Submitted state persists after refresh.
-
-## AC-006
-
-Each eligible active bill displays a yellow Partial button.
-
-## AC-007
-
-Several partial payments can be entered for one bill in one month.
-
-## AC-008
-
-Each partial payment retains its own amount and date.
-
-## AC-009
-
-Cumulative paid and remaining balances calculate correctly.
-
-## AC-010
-
-Partially paid bills display a yellow Partial badge.
-
-## AC-011
-
-A bill automatically becomes Submitted/Paid when cumulative payments equal the bill amount.
-
-## AC-012
-
-Edit allows all approved fields to be changed.
-
-## AC-013
-
-Edit retains the bill ID and does not create a duplicate.
-
-## AC-014
-
-Archive retires a bill and removes it from the active UI.
-
-## AC-015
-
-Archived bill and payment history remain available for audit purposes.
-
-## AC-016
-
-Archived bills are excluded from active counts and totals.
-
-## AC-017
-
-Previous months display Bulk Submit.
-
-## AC-018
-
-Bulk Submit affects only eligible bills in the selected previous month.
-
-## AC-019
-
-Total Budget equals all active bill amounts for the selected month.
-
-## AC-020
-
-Submitted equals the full amount of bills paid in full.
-
-## AC-021
-
-Partial equals payments applied to bills that remain partially paid.
-
-## AC-022
-
-Remaining equals all outstanding unpaid and partial balances.
-
-## AC-023
-
-Due Soon equals eligible outstanding balances due within seven days.
-
-## AC-024
-
-Active Bills equals the exact number of active, non-archived bills.
-
-## AC-025
-
-Overdue equals the exact number of past-due active bills with outstanding balances.
-
-## AC-026
-
-The Dashboard Remaining card is renamed Partial.
-
-## AC-027
-
-Dashboard Partial matches Bills workspace Partial.
-
-## AC-028
-
-Dashboard Total Paid matches Bills workspace Submitted.
-
-## AC-029
-
-The Pending label is removed from This Month Overview.
-
-## AC-030
-
-This Month Overview displays Submitted, Partial, Overdue, and Future.
-
-## AC-031
-
-Each active bill appears in only one overview status.
-
-## AC-032
-
-Dashboard and Bills workspace values remain synchronized.
-
-## AC-033
-
-Multiple payment transactions do not duplicate bill counts or budget amounts.
-
-## AC-034
-
-All totals update immediately after a bill or payment action.
-
-## AC-035
-
-The following reconciliation passes for every selected month:
-
-```text
-Total Budget = Submitted + Partial + Remaining
-```
-
-## AC-036
-
-No unapproved changes are made to the existing visual design, navigation, or layout.
-
----
-
-# Definition of Done
-
-The work is complete only when:
-
-1. All approved requirements are implemented.
-2. All calculations use persisted data.
-3. All Bills and Dashboard values use shared logic.
-4. All automated tests pass.
-5. Production build succeeds.
-6. No regression is introduced to existing approved behavior.
-7. UI guardrails are preserved.
-8. All acceptance criteria pass.
-9. The implementation plan and affected files are documented.
-10. Changes are committed with a clear implementation summary.
-
----
-
-# Codex Handoff Prompt
-
-Use the following instruction when handing this README to Codex:
-
-> Review `README-Bills-Dashboard-Handoff.md` and implement the approved Bills workspace and Dashboard requirements exactly as documented.
->
-> Begin with the data framework, persistence model, shared calculation services, and business rules before making layout changes.
->
-> Do not change the existing UI design, colors, navigation, typography, table structure, or layout except where the README explicitly requires a new button, card, label, or status.
->
-> Use the persistent backend and Bills Master data as the single source of truth. Do not introduce placeholder data, duplicate calculations, or local-only state.
->
-> Before modifying code, inspect the repository and provide:
-> - the affected files,
-> - the proposed implementation plan,
-> - existing conflicts with the README,
-> - required data-model and API changes,
-> - and any requirement that cannot be implemented without clarification.
->
-> Do not begin implementation until the plan has been reviewed and approved.
-
----
-
-# Version History
-
-| Version | Date | Description |
-|---|---|---|
-| 1.0 | 2026-08-06 | Initial consolidated Bills and Dashboard handoff specification |
-
----
-
-# Approval
-
-Status: **Ready for implementation-plan review**
-
-Implementation must not begin until the repository assessment and implementation plan have been reviewed and approved.
+- 2026-08-07 — v1.1.0 — Added payment persistence requirements, occurrence definitions, Remaining/Credit formulas, funding_account and notes requirement, clarified Next Due semantics, preserved TCUB/TCU rules, and defined Overdue precedence.
