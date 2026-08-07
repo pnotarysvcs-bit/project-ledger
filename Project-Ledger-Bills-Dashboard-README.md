@@ -201,3 +201,5 @@ The following existing sections/IDs in the Phase 1 baseline are updated or suppl
 ## Change Log
 
 - 2026-08-07 — v1.1.0 — Added payment persistence requirements, occurrence definitions, Remaining/Credit formulas, funding_account and notes requirement, clarified Next Due semantics, preserved TCUB/TCU rules, and defined Overdue precedence.
+
+
