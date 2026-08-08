@@ -70,7 +70,7 @@ test('one-time, quarterly, and annual bills follow their scheduled months', asyn
   const may = await getLedgerBills({ selectedMonth: '2026-05', asOf: new Date('2026-05-01T00:00:00Z') });
   const july = await getLedgerBills({ selectedMonth: '2026-07', asOf: new Date('2026-07-01T00:00:00Z') });
 
-  assert.deepEqual(april.map((bill) => bill.id), ['monthly', 'quarterly', 'annual', 'once']);
+  assert.deepEqual(april.map((bill) => bill.id), ['annual', 'monthly', 'once', 'quarterly']);
   assert.deepEqual(may.map((bill) => bill.id), ['monthly']);
   assert.deepEqual(july.map((bill) => bill.id), ['monthly', 'quarterly']);
 });
@@ -85,12 +85,26 @@ test('bulk statuses do not carry submitted state into a month without payments',
     start_month: '2026-04-01', notes: null, is_active: true,
   };
 
+  const occurrenceFor = (month, dueDate, id) => ({
+    id,
+    bill_id: bill.id,
+    month,
+    status: 'submitted',
+    occurrence_budget_amount: '1000',
+    actual_amount: null,
+    due_date: dueDate,
+    installment_key: dueDate,
+    migration_incomplete: false,
+  });
+
   const originalFetch = global.fetch;
   global.fetch = async (url) => {
     const target = String(url);
     if (target.includes('ledger_bills?')) return jsonResponse([bill]);
     if (target.includes('ledger_bill_months?')) {
-      return jsonResponse([{ bill_id: bill.id, status: 'submitted' }]);
+      if (target.includes('month=eq.2026-07-01')) return jsonResponse([occurrenceFor('2026-07-01', '2026-07-15', 'occ-july')]);
+      if (target.includes('month=eq.2026-08-01')) return jsonResponse([occurrenceFor('2026-08-01', '2026-08-15', 'occ-august')]);
+      return jsonResponse([]);
     }
     if (target.includes('ledger_bill_payments?')) return jsonResponse([]);
     return new Response('Not found', { status: 404 });
@@ -107,7 +121,7 @@ test('bulk statuses do not carry submitted state into a month without payments',
   });
 
   assert.equal(julyBill.status, 'overdue');
-  assert.equal(augustBill.status, 'due-soon');
+  assert.equal(augustBill.status, 'future');
   assert.equal(augustBill.submitted, 0);
   assert.equal(augustBill.remaining, 1000);
 });
