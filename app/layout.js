@@ -1,4 +1,5 @@
 import './styles.css';
+import './bills-enhancements.css';
 import Nav from './nav.js';
 
 export const metadata = {

@@ -1,0 +1,24 @@
+.status.incomplete { color: #ffd25c; background: #403311; border: 1px solid #6b5619; }
+.button.partial { background: #f2c94c; color: #241c00; }
+.button.partial:hover { background: #ffd75e; }
+.button.disabled { pointer-events: none; cursor: not-allowed; opacity: .45; }
+.button.ghost { background: transparent; border: 1px solid #333637; color: #dbe3ea; }
+.button.ghost:hover { background: #191b1b; }
+.missing-amount { color: #ffd25c; background: #403311; border-color: #6b5619; }
+.data-quality { margin: -8px 0 20px; padding: 10px 14px; border-radius: 9px; color: #a9b2bb; background: #171818; border: 1px solid #333637; font-size: 13px; }
+.bill-filters { margin: 0 0 20px; padding: 16px; display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; background: #171818; border: 1px solid #292b2c; border-radius: 12px; align-items: end; }
+.bill-filters label { display: grid; gap: 6px; color: #bac4cc; font-size: 12px; text-transform: uppercase; }
+.bill-filters input, .editing-row input, .editing-row select, .inline-payment input { width: 100%; min-width: 90px; background: #0f1011; border: 1px solid #333637; border-radius: 7px; padding: 8px 9px; color: #f4f7f7; font-size: 13px; }
+.bill-filters .filter-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.editing-row { background: #101c18; }
+.editing-row td { vertical-align: top; }
+.editing-row td:first-child input { margin-bottom: 7px; }
+.editing-row select { min-width: 120px; }
+.inline-detail td { padding: 0; background: #101111; }
+.inline-payment { padding: 16px 20px 20px; border-top: 1px solid #292b2c; display: grid; gap: 14px; }
+.inline-payment-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; color: #00d6a3; }
+.inline-payment-head a { color: #00d6a3; text-decoration: none; }
+.inline-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; align-items: end; }
+.inline-form label { display: grid; gap: 6px; color: #bac4cc; font-size: 12px; }
+.payment-row { display: grid; grid-template-columns: 120px 150px minmax(130px, 1fr) minmax(160px, 2fr) auto auto; gap: 8px; align-items: center; }
+@media (max-width: 900px) { .payment-row { grid-template-columns: 1fr 1fr; } }
