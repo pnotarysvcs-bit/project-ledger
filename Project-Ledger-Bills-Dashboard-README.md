@@ -2,7 +2,7 @@
 
 **Document:** Project-Ledger-Bills-Dashboard-README (Authoritative)
 **Status:** Approved (authoritative doc for bills + dashboard behavior)
-**Version:** 1.1.1
+**Version:** 1.1.2
 **Approval Date:** 2026-08-08
 
 ## Purpose
@@ -26,6 +26,8 @@ This authoritative README consolidates the approved Phase 1 Bills requirements a
 - Enforce Overdue precedence consistently across Bills workspace and Dashboard for partially paid overdue bills, including the Budget fallback when Actual is null.
 - Require soft-delete/restricted-delete safeguards so Bills Master deletion cannot cascade away historical occurrences or payment records.
 - Require migration and backfill of legacy payment rows before occurrence-based constraints and confirmed-payment calculations are enforced.
+- Represent every bi-weekly due date as its own installment occurrence, including months with two or three installments.
+- Backfill every legacy month row and every required payment funding account before enforcing the new constraints.
 
 ## Definitions
 
@@ -43,7 +45,11 @@ This authoritative README consolidates the approved Phase 1 Bills requirements a
 
 - Confirmed Payment Record: A persisted payment transaction that has been saved and confirmed by the database; these records are the financial source of truth for status derivation.
 
-- Monthly Occurrence: A period-scoped instance of a bill for a calendar month. An occurrence has its own Budget snapshot, Actual Bill Amount (nullable), Payments Made (zero or more persisted payment records), Status, and occurrence-level Next Due.
+- Reporting Month: A calendar-month grouping used by Bills and Dashboard totals. It may contain more than one installment occurrence for a recurring bill and is not itself the unit to which a payment or overdue decision is attached.
+
+- Installment Occurrence: A due-date-scoped instance of a bill. It has exactly one `due_date`, its own Budget snapshot, Actual Bill Amount (nullable), Payments Made (zero or more persisted payment records), Status, and stable occurrence identifier. Monthly, quarterly, annual, and one-time schedules ordinarily create at most one installment occurrence in a reporting month. A bi-weekly schedule creates one installment occurrence for every 14-day due date, so the same bill can have two or three occurrences in one reporting month.
+
+- Monthly Occurrence: The single installment occurrence produced by a monthly cadence. References in this document to occurrence-level calculations apply independently to every Installment Occurrence; implementations must not collapse multiple bi-weekly installments into one monthly row.
 
 - Historical Correction: An explicit, user-initiated correction to a prior occurrence or payment that is persisted with an audit trail. Historical corrections are distinct from automatic rollover, archive, recurrence, or migration behavior and must never occur implicitly.
 
@@ -90,7 +96,7 @@ This authoritative README consolidates the approved Phase 1 Bills requirements a
   - Active bills that lack both occurrence Budget Amount and Actual Bill Amount are treated as incomplete records and are excluded from financial reconciliation and Headline Budget totals until corrected; they remain visible to users for editing.
 
 - RULE-106 — Credit Synchronization
-  - Credit Amount is a derived financial result of confirmed Payments Made versus Effective Amount. If a materialized credit/overpayment record is persisted for accounting or audit purposes, it must be transactionally upserted, reduced, or removed whenever a related payment or Actual Bill Amount is created, edited, deleted, confirmed, or otherwise changed. A stale credit record must never survive when recalculation produces a smaller or zero Credit Amount.
+  - Credit Amount is a derived financial result of confirmed Payments Made versus Effective Amount. If a materialized credit/overpayment record is persisted for accounting or audit purposes, it must be transactionally upserted, reduced, or removed whenever a related payment, Actual Bill Amount, or occurrence Budget override is created, edited, deleted, confirmed, cleared, or otherwise changed. This includes a Budget override while `actual_amount` is null because that override changes Effective Amount. A stale credit record must never survive when recalculation produces a smaller or zero Credit Amount.
 
 - RULE-107 — Historical Preservation on Delete
   - A Bills Master record with any historical occurrence, payment, credit, or reporting dependency must not be hard-deleted through a cascading delete path. Delete must be implemented as a soft delete/archive, or hard delete must be restricted to master records that have no historical occurrences or financial history. Historical rows and payment transactions must be preserved.
@@ -135,7 +141,7 @@ This authoritative README consolidates the approved Phase 1 Bills requirements a
 
 - FR-102 — Overpayment Handling and Credit Reconciliation
   - Preserve payment transactions when total Payments Made exceeds Effective Amount. Excess must be represented as Credit Amount on the bill occurrence. If a separate persisted credit record is used, it must be linked to the occurrence and funding_account and treated as a synchronized materialization of the derived Credit Amount, not an independent source of truth.
-  - Whenever confirmed payments or Actual Bill Amount change, the system must recalculate Credit Amount and atomically create, update, reduce, or remove the materialized credit record so it exactly matches the current derived credit.
+  - Whenever confirmed payments, Actual Bill Amount, or an occurrence Budget override change, the system must recalculate Effective Amount, Remaining Balance, Credit Amount, and derived status and atomically create, update, reduce, or remove the materialized credit record so it exactly matches the current derived credit. Budget changes must follow this path whenever `actual_amount` is null; they must not leave a credit calculated from the prior Budget.
 
 - FR-103 — Remaining and Credit Calculations
   - Implement Remaining Balance and Credit Amount calculations at occurrence level using Effective Amount. Remaining must never be negative; Credit must be >= 0.
@@ -154,15 +160,18 @@ This authoritative README consolidates the approved Phase 1 Bills requirements a
   - Monthly recurrence: update `due_day`; future monthly occurrences use the new day.
   - Quarterly recurrence: update `due_day` and update the quarterly cadence anchor/start month only when the user explicitly changes the anchor.
   - Annual recurrence: update the annual due month/day or recurrence anchor explicitly selected by the user.
-  - Bi-weekly recurrence: persist and use a recurrence anchor date; future due dates are calculated at 14-day intervals from that anchor and must not be derived from `due_day` alone.
+  - Bi-weekly recurrence: persist and use a recurrence anchor date; future due dates are calculated at 14-day intervals from that anchor and must not be derived from `due_day` alone. Materialize a separate Installment Occurrence for every due date, including all two or three installments that fall in the same reporting month. The master Budget for a bi-weekly bill is the per-installment Budget unless the master explicitly stores a separately named monthly aggregate; never duplicate a monthly aggregate onto every installment.
+  - Each payment and occurrence edit must identify a specific `occurrence_id`. Status, Remaining Balance, Credit Amount, and Overdue are derived independently per installment and then summed for reporting-month totals. A payment must not implicitly satisfy a different installment; an explicit audited allocation or reallocation is required.
   - The UI must clearly distinguish “Change only this occurrence” (default) from “Also update recurring schedule” (opt-in), and schedule propagation must be auditable.
 
 - FR-107 — Legacy Payment Migration and Backfill
-  - Before enforcing occurrence-based payment constraints or confirmed-only status calculations, migrate legacy `ledger_bill_payments` rows that use `bill_id` and `payment_month` into the occurrence model.
-  - For each legacy bill/month combination, create or resolve the matching monthly occurrence and populate the payment’s `occurrence_id`.
+  - Before enforcing occurrence-based payment constraints or confirmed-only status calculations, migrate all existing `ledger_bill_months` rows and all legacy `ledger_bill_payments` rows that use `bill_id` and `payment_month` into the occurrence model. The month-row pass runs first and creates or resolves an occurrence for every legacy month row, including rows with no payment. The payment pass then links every payment to a due-date-scoped occurrence.
+  - Backfill each legacy month occurrence’s Budget, Actual, and due date from immutable contemporaneous data, in priority order: values already stored with the month row; an audit/version snapshot effective for that month; or an explicit reviewed migration override recorded with source and approver. The current Bills Master value must not be silently copied into a closed historical month. If no trustworthy value exists, retain the occurrence, mark it `migration_incomplete`, and require reviewed correction before migration validation can pass; do not omit it or silently exclude it from finalized historical totals.
+  - For bi-weekly legacy months, generate every due-date-scoped installment from the persisted recurrence anchor and allocate payments deterministically by an explicit migration rule (payment-supplied installment reference first, otherwise due-date ordering), recording the allocation provenance. Ambiguous allocations are marked `migration_incomplete` for review rather than assigned to a monthly aggregate.
   - Backfill required confirmation metadata so previously valid persisted payments remain included in historical totals. Legacy persisted payments that represent completed historical transactions must receive an explicit confirmed value according to the approved migration rule rather than being left null.
   - Backfill `created_by` with a documented migration/system actor when an original actor is unavailable, preserving original timestamps and payment data wherever present.
-  - Constraints that require `occurrence_id`, `created_by`, or `confirmed_flag` must not be enforced until the backfill has completed and migration validation confirms that no eligible historical payment would be dropped from reporting.
+  - Backfill `funding_account` before making it required. Use the payment’s existing nonblank value first; otherwise use the bill/account mapping only when that mapping is uniquely and historically valid for the payment date. When neither source is reliable, assign a dedicated non-posting `Legacy — Unspecified` funding-account record, preserve the payment in historical totals, and flag it for remediation. This sentinel must not be treated as a real cash account or used for new payments.
+  - Constraints that require `occurrence_id`, `created_by`, `confirmed_flag`, or `funding_account` must not be enforced until the backfill has completed and validation confirms that every legacy month row has been represented, every payment is linked and funded, no `migration_incomplete` occurrence remains, and no eligible historical row would be dropped from reporting.
 
 ## Dependencies (update)
 
@@ -179,7 +188,7 @@ This authoritative README consolidates the approved Phase 1 Bills requirements a
   - The Dashboard must consume the same approved Bills Master + occurrences + payments persisted data source where totals are displayed.
 
 - D-005 — Legacy Data Migration
-  - Deployment of the occurrence/payment model depends on a validated migration that creates or resolves occurrences for legacy payment months, links legacy payments to those occurrences, and backfills required confirmation/audit metadata before new non-null constraints or confirmed-only calculations are enabled.
+  - Deployment of the occurrence/payment model depends on a validated migration that represents every legacy month row (whether or not it has payments), creates every due-date-scoped bi-weekly installment, links legacy payments to specific occurrences, and backfills required funding-account, confirmation, and audit metadata before new non-null constraints or confirmed-only calculations are enabled.
 
 ## Acceptance Criteria (clarifications and additions)
 
@@ -198,6 +207,7 @@ This authoritative README consolidates the approved Phase 1 Bills requirements a
 - AC-101 — Overpayment preserved and synchronized
   - Given Payments Made > Effective Amount, when payments are confirmed, then excess is represented as Credit Amount linked to the occurrence and funding_account without erasing payment history.
   - Given a payment or Actual Bill Amount is subsequently edited or deleted, when recalculation reduces or removes the overpayment, then any persisted credit record is atomically updated or removed to match the newly derived Credit Amount.
+  - Given `actual_amount` is null and an occurrence Budget override changes Effective Amount, when the override is saved, then Remaining Balance, Credit Amount, derived status, and any materialized credit are atomically recalculated from the new Budget.
 
 - AC-102 — Incomplete active bills excluded
   - Given an active bill occurrence with no occurrence Budget Amount and no Actual Bill Amount, when the month is included in a reconciliation, then the occurrence is excluded from budget and financial totals and flagged to the user as incomplete until corrected.
@@ -225,9 +235,18 @@ This authoritative README consolidates the approved Phase 1 Bills requirements a
   - Given the user changes Next Due and leaves “Change only this occurrence” selected, when saved, then only the selected occurrence `due_date` changes and future recurrence fields remain unchanged.
   - Given the user explicitly selects “Also update recurring schedule,” when saved, then only the applicable recurrence fields for monthly, quarterly, annual, or bi-weekly cadence are updated for future generation, with bi-weekly schedules anchored to a persisted recurrence anchor date.
 
+- AC-110 — Bi-weekly installments remain distinct
+  - Given a bi-weekly bill has two or three anchor-derived due dates in a reporting month, when occurrences are generated, then each due date has a distinct occurrence identifier, amount, due date, payment allocation, and derived status. Passing one installment’s due date cannot mark a later installment Overdue, and editing or paying one installment does not mutate another.
+
+- AC-111 — Every legacy month is backfilled
+  - Given `ledger_bill_months` contains rows both with and without payments, when migration completes, then every source row maps to a validated occurrence and retains traceable Budget, Actual, and due-date provenance. Rows lacking trustworthy historical values block completion as `migration_incomplete`; current master values are not silently used to rewrite them.
+
+- AC-112 — Legacy funding accounts are valid before enforcement
+  - Given a legacy payment has null or blank `funding_account`, when migration runs, then it receives a uniquely valid historical mapping or the `Legacy — Unspecified` sentinel, remains in historical totals, and is flagged when remediation is required. Only after validation finds no null or blank values may the required constraint be enabled.
+
 ## Data Model Notes (developer guidance)
 
-- Occurrence table (example fields): occurrence_id, bill_master_id, occurrence_month (YYYY-MM), occurrence_budget_amount (nullable), actual_amount (nullable), status, due_date (nullable), created_at, updated_at.
+- Occurrence table (example fields): occurrence_id, bill_master_id, reporting_month (YYYY-MM), installment_sequence, occurrence_budget_amount (nullable), actual_amount (nullable), status, due_date (required), migration_state, migration_provenance, created_at, updated_at. Uniqueness must identify a due-date-scoped installment (for example, bill_master_id + due_date), not bill_master_id + reporting_month alone.
 
 - Payments table (example fields): payment_id, occurrence_id, payment_date, amount, funding_account, notes (nullable), created_by, created_at, confirmed_flag.
 
@@ -237,7 +256,7 @@ This authoritative README consolidates the approved Phase 1 Bills requirements a
 
 - Master bill retains the durable Budget and recurring schedule fields. When a new occurrence is created for a month, copy the applicable master Budget into `occurrence_budget_amount`; do not copy Budget into `actual_amount`. Leave `actual_amount` null until an invoiced or confirmed Actual Bill Amount is provided.
 
-- Legacy payment migration must create/resolve occurrence rows before setting payment `occurrence_id` constraints and must backfill confirmation/audit fields before confirmed-only calculations become authoritative.
+- Legacy migration must create/resolve every source month and installment occurrence before setting payment `occurrence_id` constraints, and must backfill funding-account, confirmation, and audit fields before required constraints or confirmed-only calculations become authoritative.
 
 ## UI & UX Notes
 
@@ -259,10 +278,10 @@ This authoritative README consolidates the approved Phase 1 Bills requirements a
 
 The following existing sections/IDs in the Phase 1 baseline are updated or supplemented by this authoritative README. Implementers should treat these IDs as changed in-place for the purpose of the current feature branch and testing:
 
-- Dependencies: D-002 updated to require funding_account and optional notes persisted for payments; D-005 added for legacy occurrence/payment migration and backfill.
+- Dependencies: D-002 requires funding_account and optional notes persisted for payments; D-005 requires complete month-row, installment, payment, and funding-account migration before enforcement.
 - Business Rules: RULE-007 clarified monthly separation; RULE-100 through RULE-108 added for confirmed-payment source of truth, occurrence Budget/Actual separation, period-effective archive, type mapping editability, overdue precedence, incomplete bills, credit synchronization, historical preservation on delete, and audited historical corrections.
 - Functional Requirements: FR-007 clarified status derivation; FR-009 clarified delete safeguards; FR-101 through FR-107 added or clarified for payment persistence, synchronized overpayment handling, calculations, funding_account requirement, confirmed payments driving canonical Submitted status, Next Due recurrence semantics, and legacy payment migration.
-- Acceptance Criteria: AC-015, AC-016, AC-017 clarified; new criteria use the unused AC-100 through AC-109 range to avoid collisions with existing Phase 1 acceptance-criteria identifiers.
+- Acceptance Criteria: AC-015, AC-016, AC-017 clarified; new criteria use the unused AC-100 through AC-112 range to avoid collisions with existing Phase 1 acceptance-criteria identifiers.
 
 ## Implementation notes for reviewers
 
@@ -271,8 +290,10 @@ The following existing sections/IDs in the Phase 1 baseline are updated or suppl
 - The master bill schema must not be rewritten to retroactively change closed prior occurrences used for historical reporting.
 - Historical immutability applies to automatic/system behavior; explicit audited Historical Corrections remain permitted where authorized.
 - Do not enforce occurrence-based non-null payment constraints until legacy data migration and validation are complete.
+- Migration validation must reconcile source and target counts and financial totals, cover paymentless legacy month rows, and report zero unresolved `migration_incomplete` occurrences and zero null/blank required payment fields before enforcement.
 
 ## Change Log
 
 - 2026-08-07 — v1.1.0 — Added payment persistence requirements, occurrence definitions, Remaining/Credit formulas, funding_account and notes requirement, clarified Next Due semantics, preserved TCUB/TCU rules, and defined Overdue precedence.
 - 2026-08-08 — v1.1.1 — Resolved follow-up review findings: separated occurrence Budget from nullable Actual; synchronized overpayment credits; restored Budget fallback in Overdue rules; moved new acceptance criteria to AC-100+; retained Submitted as the canonical status; defined audited historical corrections; protected history from cascading delete; specified recurrence field semantics; and added legacy payment migration/backfill requirements.
+- 2026-08-08 — v1.1.2 — Required credit recalculation after Budget overrides; modeled every bi-weekly due date as a distinct installment; and defined complete legacy month, occurrence, and funding-account backfills with validation gates.
