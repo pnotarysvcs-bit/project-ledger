@@ -66,9 +66,12 @@ export function buildLedgerRows(bills, occurrences, payments, { selectedMonth, a
     .map((bill) => {
       const occurrence = occurrenceByBill.get(bill.id);
       const masterBudget = bill.budget === null ? null : Number(bill.budget);
-      const occurrenceBudget = occurrence?.occurrence_budget_amount === null || occurrence?.occurrence_budget_amount === undefined
-        ? masterBudget
-        : Number(occurrence.occurrence_budget_amount);
+      const migrationIncomplete = occurrence?.migration_incomplete === true;
+      const occurrenceBudget = occurrence
+        ? (occurrence.occurrence_budget_amount === null || occurrence.occurrence_budget_amount === undefined
+          ? null
+          : Number(occurrence.occurrence_budget_amount))
+        : masterBudget;
       const actualAmount = occurrence?.actual_amount === null || occurrence?.actual_amount === undefined
         ? null
         : Number(occurrence.actual_amount);
@@ -88,6 +91,7 @@ export function buildLedgerRows(bills, occurrences, payments, { selectedMonth, a
         budget: occurrenceBudget,
         actualAmount,
         effectiveAmount,
+        migrationIncomplete,
         frequency: bill.frequency,
         nextDue,
         dueDay: bill.due_day,
@@ -107,7 +111,7 @@ export async function getLedgerBills({ selectedMonth, asOf = new Date() } = {}) 
   const month = `${normalized}-01`;
   const [bills, occurrences, payments] = await Promise.all([
     supabaseRequest(`ledger_bills?select=id,bill_name,bill_type,category,account,budget,frequency,due_day,start_month,notes,is_active,archived_at&start_month=lte.${month}&order=bill_name.asc`),
-    supabaseRequest(`ledger_bill_months?select=id,bill_id,month,occurrence_budget_amount,actual_amount,due_date&month=eq.${month}`),
+    supabaseRequest(`ledger_bill_months?select=id,bill_id,month,occurrence_budget_amount,actual_amount,due_date,migration_incomplete&month=eq.${month}`),
     supabaseRequest(`ledger_bill_payments?select=id,bill_id,amount,payment_date,funding_account,notes&payment_month=eq.${month}&order=payment_date.asc`),
   ]);
   return buildLedgerRows(bills, occurrences, payments, { selectedMonth: normalized, asOf });
@@ -123,7 +127,7 @@ export function summarizeLedgerBills(rows, asOf = new Date()) {
     summary.activeCount += 1;
     summary.credit += bill.credit ?? 0;
 
-    if (bill.effectiveAmount === null) summary.incompleteCount += 1;
+    if (bill.effectiveAmount === null || bill.migrationIncomplete) summary.incompleteCount += 1;
 
     if (bill.status === 'submitted') {
       summary.submitted += effectiveAmount;
