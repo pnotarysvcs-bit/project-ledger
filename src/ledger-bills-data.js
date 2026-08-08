@@ -229,8 +229,11 @@ export function summarizeLedgerBills(rows, asOf = new Date()) {
 
   return rows.reduce((summary, bill) => {
     const effectiveAmount = bill.effectiveAmount ?? 0;
+    const submitted = bill.submitted ?? 0;
+    const isPartiallyPaid = bill.effectiveAmount !== null && submitted > 0 && submitted < bill.effectiveAmount;
+
     summary.total += effectiveAmount;
-    summary.totalPaid += bill.submitted ?? 0;
+    summary.totalPaid += submitted;
     summary.activeCount += 1;
     summary.credit += bill.credit ?? 0;
 
@@ -242,10 +245,11 @@ export function summarizeLedgerBills(rows, asOf = new Date()) {
       summary.submittedCount += 1;
     } else if (bill.status !== 'incomplete') {
       summary.remaining += bill.remaining ?? 0;
-      if (bill.status === 'partial') {
-        summary.partial += bill.submitted;
-        summary.partialCount += 1;
-      }
+    }
+
+    if (isPartiallyPaid) {
+      summary.partial += submitted;
+      summary.partialCount += 1;
     }
 
     if (bill.status === 'overdue') {

@@ -10,6 +10,29 @@ test('status precedence is submitted then overdue then partial then future', () 
   assert.equal(classifyLedgerBill({ effectiveAmount: 100, submitted: 0, dueDate: '2026-08-20' }, asOf), 'future');
 });
 
+test('past-due overpayment is submitted with credit and never overdue', () => {
+  const asOf = new Date('2026-08-08T12:00:00Z');
+  assert.equal(classifyLedgerBill({ effectiveAmount: 114.98, submitted: 124.98, dueDate: '2026-04-27' }, asOf), 'submitted');
+
+  const bills = [{ id: 'b1', bill_name: 'AfterPay', bill_type: 'Personal', category: 'Online Credit', account: 'TCU', budget: 114.98, frequency: 'monthly', due_day: 27, start_month: '2026-04-01', notes: null, is_active: true, archived_at: null }];
+  const occurrences = [{ id: 'o1', bill_id: 'b1', month: '2026-04-01', occurrence_budget_amount: 114.98, actual_amount: null, due_date: '2026-04-27', migration_incomplete: false }];
+  const payments = [
+    { id: 'p1', bill_id: 'b1', occurrence_id: 'o1', amount: 114.98, payment_date: '2026-04-27', funding_account: 'TCU', notes: null },
+    { id: 'p2', bill_id: 'b1', occurrence_id: 'o1', amount: 10, payment_date: '2026-04-28', funding_account: 'TCU', notes: null },
+  ];
+  const [row] = buildLedgerRows(bills, occurrences, payments, { selectedMonth: '2026-04', asOf });
+  assert.equal(row.effectiveAmount, 114.98);
+  assert.equal(row.submitted, 124.98);
+  assert.equal(row.remaining, 0);
+  assert.equal(row.credit, 10);
+  assert.equal(row.status, 'submitted');
+
+  const summary = summarizeLedgerBills([row], asOf);
+  assert.equal(summary.overdueCount, 0);
+  assert.equal(summary.overdue, 0);
+  assert.equal(summary.credit, 10);
+});
+
 test('monthly Actual overrides Budget and preserves overpayment as credit', () => {
   const bills = [{ id: 'b1', bill_name: 'Utility', bill_type: 'Personal', category: 'Utilities', account: 'TCU', budget: 150, frequency: 'monthly', due_day: 15, start_month: '2026-04-01', notes: null, is_active: true, archived_at: null }];
   const occurrences = [{ id: 'o1', bill_id: 'b1', month: '2026-08-01', occurrence_budget_amount: 150, actual_amount: 100, due_date: '2026-08-15', migration_incomplete: false }];
@@ -35,14 +58,14 @@ test('historical migrated occurrence does not inherit the current master budget'
   assert.equal(summary.incompleteCount, 1);
 });
 
-test('summary counts only rows currently classified partial', () => {
+test('summary counts all partially paid rows, including overdue rows', () => {
   const rows = [
     { effectiveAmount: 100, status: 'partial', submitted: 20, remaining: 80, credit: 0, nextDue: '2026-08-20' },
     { effectiveAmount: 100, status: 'overdue', submitted: 20, remaining: 80, credit: 0, nextDue: '2026-08-01' },
   ];
   const summary = summarizeLedgerBills(rows, new Date('2026-08-08T12:00:00Z'));
-  assert.equal(summary.partialCount, 1);
-  assert.equal(summary.partial, 20);
+  assert.equal(summary.partialCount, 2);
+  assert.equal(summary.partial, 40);
   assert.equal(summary.overdueCount, 1);
 });
 
@@ -55,7 +78,8 @@ test('Total Paid includes submitted, partial, and overdue payment transactions',
   const summary = summarizeLedgerBills(rows, new Date('2026-08-08T12:00:00Z'));
   assert.equal(summary.totalPaid, 150);
   assert.equal(summary.submitted, 100);
-  assert.equal(summary.partial, 20);
+  assert.equal(summary.partial, 50);
+  assert.equal(summary.partialCount, 2);
 });
 
 test('bi-weekly recurrence materializes every 14-day installment including three-installment months', () => {
