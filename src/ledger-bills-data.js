@@ -63,9 +63,10 @@ function activeInMonth(bill, selected) {
   return new Date(bill.archived_at) >= new Date(Date.UTC(selected.getUTCFullYear(), selected.getUTCMonth() + 1, 1));
 }
 
-/** Single precedence shared by Bills and Dashboard: Submitted → Overdue → Partial → Future. */
+/** Single precedence shared by Bills and Dashboard: Incomplete → Submitted → Overdue → Partial → Future. */
 export function classifyLedgerBill({ effectiveAmount, submitted, dueDate }, asOf = new Date()) {
-  if (effectiveAmount !== null && submitted >= effectiveAmount) return 'submitted';
+  if (effectiveAmount === null) return 'incomplete';
+  if (submitted >= effectiveAmount) return 'submitted';
   if (new Date(`${dueDate}T23:59:59Z`) < asOf) return 'overdue';
   if (submitted > 0) return 'partial';
   return 'future';
@@ -233,12 +234,13 @@ export function summarizeLedgerBills(rows, asOf = new Date()) {
     summary.activeCount += 1;
     summary.credit += bill.credit ?? 0;
 
-    if (bill.effectiveAmount === null || bill.migrationIncomplete) summary.incompleteCount += 1;
+    if (bill.effectiveAmount === null) summary.incompleteCount += 1;
+    if (bill.migrationIncomplete) summary.dataQualityCount += 1;
 
     if (bill.status === 'submitted') {
       summary.submitted += effectiveAmount;
       summary.submittedCount += 1;
-    } else {
+    } else if (bill.status !== 'incomplete') {
       summary.remaining += bill.remaining ?? 0;
       if (bill.status === 'partial') {
         summary.partial += bill.submitted;
@@ -253,7 +255,7 @@ export function summarizeLedgerBills(rows, asOf = new Date()) {
 
     const due = new Date(`${bill.nextDue}T00:00:00Z`);
     const days = (due - today) / DAY;
-    if (!['submitted', 'overdue'].includes(bill.status) && (bill.remaining ?? 0) > 0 && days >= 0 && days <= 7) {
+    if (!['submitted', 'overdue', 'incomplete'].includes(bill.status) && (bill.remaining ?? 0) > 0 && days >= 0 && days <= 7) {
       summary.dueSoon += bill.remaining;
       summary.dueSoonCount += 1;
     }
@@ -274,6 +276,7 @@ export function summarizeLedgerBills(rows, asOf = new Date()) {
     overdueCount: 0,
     dueSoonCount: 0,
     incompleteCount: 0,
+    dataQualityCount: 0,
   });
 }
 
