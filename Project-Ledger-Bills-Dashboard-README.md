@@ -2,7 +2,7 @@
 
 **Document:** Project-Ledger-Bills-Dashboard-README (Authoritative)
 **Status:** Approved (authoritative doc for bills + dashboard behavior)
-**Version:** 1.1.2
+**Version:** 1.1.3
 **Approval Date:** 2026-08-08
 
 ## Purpose
@@ -99,7 +99,7 @@ This authoritative README consolidates the approved Phase 1 Bills requirements a
   - Credit Amount is a derived financial result of confirmed Payments Made versus Effective Amount. If a materialized credit/overpayment record is persisted for accounting or audit purposes, it must be transactionally upserted, reduced, or removed whenever a related payment, Actual Bill Amount, or occurrence Budget override is created, edited, deleted, confirmed, cleared, or otherwise changed. This includes a Budget override while `actual_amount` is null because that override changes Effective Amount. A stale credit record must never survive when recalculation produces a smaller or zero Credit Amount.
 
 - RULE-107 — Historical Preservation on Delete
-  - A Bills Master record with any historical occurrence, payment, credit, or reporting dependency must not be hard-deleted through a cascading delete path. Delete must be implemented as a soft delete/archive, or hard delete must be restricted to master records that have no historical occurrences or financial history. Historical rows and payment transactions must be preserved.
+  - A Bills Master record with any historical occurrence, payment, credit, or reporting dependency must not be hard-deleted through a cascading delete path. Delete must be implemented as a soft delete/archive, or hard delete must be restricted to master records that have no historical occurrences or financial history. Historical rows and payment transactions must be preserved. Database foreign keys on occurrences, payments, credits, and audit/reporting records must use restrictive/no-action deletion semantics (not `ON DELETE CASCADE`) wherever a master deletion could erase that history; the service must verify the no-history condition in the same transaction as any permitted hard delete.
 
 - RULE-108 — Historical Correction Governance
   - Historical immutability prevents automatic or incidental rewrites; it does not prohibit explicit corrections. A prior occurrence’s Actual Bill Amount, Next Due, Budget override, payment, funding account, or notes may be corrected only through a deliberate Historical Correction action that records the actor, timestamp, changed fields, prior values, and new values.
@@ -136,7 +136,7 @@ This authoritative README consolidates the approved Phase 1 Bills requirements a
 
 - FR-101 — Payment Transactions
   - Persisted payment records must include: payment date, amount, funding_account (required), optional notes. Payment records must be editable and deletable with the same persistence guarantees as bills.
-  - Editing or deleting a payment must atomically trigger recalculation of Payments Made, Remaining Balance, Credit Amount, and derived status for the affected occurrence. Any persisted credit/overpayment record must be synchronized in the same transaction or equivalent atomic operation.
+  - Editing or deleting a payment must atomically trigger recalculation of Payments Made, Remaining Balance, Credit Amount, and derived status for the affected occurrence. Any persisted credit/overpayment record must be synchronized in the same transaction or equivalent atomic operation. The recalculation must read the post-mutation set of confirmed payments, lock or otherwise concurrency-protect the affected occurrence and materialized credit, and commit the payment mutation and credit upsert/deletion together; a failure rolls back both.
   - Historical payment edits or deletions must use the audited Historical Correction workflow.
 
 - FR-102 — Overpayment Handling and Credit Reconciliation
@@ -171,7 +171,7 @@ This authoritative README consolidates the approved Phase 1 Bills requirements a
   - Backfill required confirmation metadata so previously valid persisted payments remain included in historical totals. Legacy persisted payments that represent completed historical transactions must receive an explicit confirmed value according to the approved migration rule rather than being left null.
   - Backfill `created_by` with a documented migration/system actor when an original actor is unavailable, preserving original timestamps and payment data wherever present.
   - Backfill `funding_account` before making it required. Use the payment’s existing nonblank value first; otherwise use the bill/account mapping only when that mapping is uniquely and historically valid for the payment date. When neither source is reliable, assign a dedicated non-posting `Legacy — Unspecified` funding-account record, preserve the payment in historical totals, and flag it for remediation. This sentinel must not be treated as a real cash account or used for new payments.
-  - Constraints that require `occurrence_id`, `created_by`, `confirmed_flag`, or `funding_account` must not be enforced until the backfill has completed and validation confirms that every legacy month row has been represented, every payment is linked and funded, no `migration_incomplete` occurrence remains, and no eligible historical row would be dropped from reporting.
+  - Constraints that require `occurrence_id`, `created_by`, `confirmed_flag`, or `funding_account` must not be enforced until the backfill has completed and validation confirms that every legacy month row has been represented, every payment is linked and funded, no `migration_incomplete` occurrence remains, and no eligible historical row would be dropped from reporting. The rollout order is mandatory: add new columns as nullable; create/backfill occurrences; populate and validate every payment field; compare pre- and post-migration row counts and confirmed historical totals; then enable `NOT NULL`/foreign-key constraints and confirmed-only calculations. Any failed validation aborts constraint activation.
 
 ## Dependencies (update)
 
