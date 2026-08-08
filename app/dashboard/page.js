@@ -2,9 +2,10 @@ import { getLedgerBills, getLedgerOverview, normalizeLedgerMonth, summarizeLedge
 import { toRingSegments } from '../../src/dashboard.js';
 import { labelForDashboardMonth, resolveDashboardMonth } from '../../src/dashboard-months.js';
 import { greetingForCentralTime } from '../../src/time-greeting.js';
-import { SAMPLE_CASH_FLOW, SAMPLE_SAVINGS_GOALS, SAMPLE_TIP } from '../../src/sample-data.js';
+import { SAMPLE_SAVINGS_GOALS, SAMPLE_TIP } from '../../src/sample-data.js';
 import PersistedAccountsSummary from './persisted-accounts-summary.js';
 import MonthSelector from './month-selector.js';
+import MonthlyIncomeCard from './monthly-income-card.js';
 
 export const dynamic = 'force-dynamic';
 
@@ -72,6 +73,7 @@ export default async function DashboardPage({ searchParams }) {
       </header>
 
       {loadError && <p className="alert" role="alert">Dashboard bills could not be loaded: {loadError}</p>}
+      {params?.incomeSaved === '1' && <p className="notice" role="status">Monthly income saved.</p>}
 
       <section className="stat-row" aria-label="Monthly figures">
         <article className="stat"><span className="bubble purple" aria-hidden="true" /><span>Total Monthly Budget</span><strong>{money.format(summary.total)}</strong><small>for {month}</small></article>
@@ -95,7 +97,7 @@ export default async function DashboardPage({ searchParams }) {
           <footer><span className="muted">{summary.submittedCount} of {plural(summary.activeCount, 'bill occurrence')} submitted</span><div className="progress-track"><div className="progress-fill" style={{ width: `${summary.activeCount ? summary.submittedCount / summary.activeCount * 100 : 0}%` }} /></div></footer>
         </article>
 
-        <article className="widget"><header><strong>Cash Flow Snapshot</strong><SampleBadge /></header><ul className="rows"><li><span>Income (MTD)</span><b className="green">{money.format(SAMPLE_CASH_FLOW.income)}</b></li><li><span>Expenses (MTD)</span><b className="red">{money.format(SAMPLE_CASH_FLOW.expenses)}</b></li><li className="ruled"><span>Net Cash Flow</span><b className="green">{money.format(SAMPLE_CASH_FLOW.netCashFlow)}</b></li><li><span>Available to Allocate</span><b>{money.format(SAMPLE_CASH_FLOW.availableToAllocate)}</b></li></ul><footer className="muted">Awaiting an income feed — figures are placeholders.</footer></article>
+        <MonthlyIncomeCard selectedMonth={selectedMonth} />
       </section>
 
       <section className="widget-row">
