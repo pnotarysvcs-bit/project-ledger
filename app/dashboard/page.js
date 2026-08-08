@@ -43,10 +43,12 @@ export default async function DashboardPage({ searchParams }) {
 
   const summary = summarizeLedgerBills(rows, now);
   const currentSummary = summarizeLedgerBills(currentRows, now);
-  const dueSoon = currentRows.filter((bill) => {
-    const days = (asDate(bill.nextDue) - asDate(now.toISOString().slice(0, 10))) / 86400000;
-    return !['submitted', 'overdue'].includes(bill.status) && (bill.remaining ?? 0) > 0 && days >= 0 && days <= 7;
-  });
+  const dueSoon = currentRows
+    .filter((bill) => {
+      const days = (asDate(bill.nextDue) - asDate(now.toISOString().slice(0, 10))) / 86400000;
+      return !['submitted', 'overdue'].includes(bill.status) && (bill.remaining ?? 0) > 0 && days >= 0 && days <= 7;
+    })
+    .sort((a, b) => a.nextDue.localeCompare(b.nextDue));
   const breakdown = getLedgerOverview(rows);
   const activity = rows
     .flatMap((bill) => bill.transactions.map((payment) => ({
