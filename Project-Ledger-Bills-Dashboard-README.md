@@ -2,7 +2,7 @@
 
 **Document:** Project-Ledger-Bills-Dashboard-README (Authoritative)
 **Status:** Approved (authoritative doc for bills + dashboard behavior)
-**Version:** 1.1.4
+**Version:** 1.1.5
 **Approval Date:** 2026-08-08
 
 ## Purpose
@@ -239,13 +239,16 @@ This authoritative README consolidates the approved Phase 1 Bills requirements a
   - Given the user explicitly selects “Also update recurring schedule,” when saved, then only the applicable recurrence fields for monthly, quarterly, annual, or bi-weekly cadence are updated for future generation, with bi-weekly schedules anchored to a persisted recurrence anchor date.
 
 - AC-110 — Bi-weekly installments remain distinct
-  - Given a bi-weekly bill has two or three anchor-derived due dates in a reporting month, when occurrences are generated, then each due date has a distinct occurrence identifier, amount, due date, payment allocation, and derived status. Passing one installment’s due date cannot mark a later installment Overdue, and editing or paying one installment does not mutate another.
+  - Given a bi-weekly bill has two or three anchor-derived due dates in a reporting month, when occurrences are generated, then each due date has a distinct stable `occurrence_id`, `due_date`, Budget snapshot, Actual Bill Amount, payment allocation, and derived status; the reporting-month view aggregates those installments without replacing them with a single monthly occurrence.
+  - Given one installment is past due and underpaid while another installment in the same reporting month is paid or not yet due, when Bills and Dashboard derive status, then Overdue applies only to the qualifying installment, and editing or paying one installment does not mutate another.
 
 - AC-111 — Every legacy month is backfilled
-  - Given `ledger_bill_months` contains rows both with and without payments, when migration completes, then every source row maps to a validated occurrence and retains traceable Budget, Actual, and due-date provenance. Rows lacking trustworthy historical values block completion as `migration_incomplete`; current master values are not silently used to rewrite them.
+  - Given `ledger_bill_months` contains rows both with and without payments, when migration completes, then every source row maps to a validated occurrence and retains traceable Budget, Actual, and due-date provenance.
+  - Given a closed legacy month lacks trustworthy contemporaneous values or differs from the current Bills Master, when migration runs, then the current master values are not silently used: the occurrence remains `migration_incomplete`, and validation blocks constraint activation until reviewed correction is complete.
 
 - AC-112 — Legacy funding accounts are valid before enforcement
-  - Given a legacy payment has null or blank `funding_account`, when migration runs, then it receives a uniquely valid historical mapping or the `Legacy — Unspecified` sentinel, remains in historical totals, and is flagged when remediation is required. Only after validation finds no null or blank values may the required constraint be enabled.
+  - Given a legacy payment has null or blank `funding_account`, when migration runs, then it receives a uniquely valid historical mapping or the non-posting `Legacy — Unspecified` sentinel, remains in historical totals, and is flagged when remediation is required.
+  - Given any legacy payment still lacks a valid funding-account reference after backfill, when deployment reaches constraint activation, then validation fails and the required constraint is not enabled.
 
 ## Data Model Notes (developer guidance)
 
@@ -301,3 +304,4 @@ The following existing sections/IDs in the Phase 1 baseline are updated or suppl
 - 2026-08-07 — v1.1.0 — Added payment persistence requirements, occurrence definitions, Remaining/Credit formulas, funding_account and notes requirement, clarified Next Due semantics, preserved TCUB/TCU rules, and defined Overdue precedence.
 - 2026-08-08 — v1.1.1 — Resolved follow-up review findings: separated occurrence Budget from nullable Actual; synchronized overpayment credits; restored Budget fallback in Overdue rules; moved new acceptance criteria to AC-100+; retained Submitted as the canonical status; defined audited historical corrections; protected history from cascading delete; specified recurrence field semantics; and added legacy payment migration/backfill requirements.
 - 2026-08-08 — v1.1.2 — Required credit recalculation after Budget overrides; modeled every bi-weekly due date as a distinct installment; and defined complete legacy month, occurrence, and funding-account backfills with validation gates.
+- 2026-08-08 — v1.1.5 — Strengthened acceptance tests for due-date-scoped bi-weekly status, paymentless legacy month preservation, historical-value review gates, and funding-account constraint activation.
