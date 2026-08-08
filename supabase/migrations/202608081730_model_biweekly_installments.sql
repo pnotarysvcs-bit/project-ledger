@@ -105,23 +105,31 @@ where not exists (
 -- due on/before payment_date (or the first installment in the month when paid
 -- early). The provenance is explicit so the allocation can be audited later.
 update public.ledger_bill_payments p
-set occurrence_id = chosen.id,
+set occurrence_id = (
+      select m.id
+      from public.ledger_bill_months m
+      where m.bill_id = p.bill_id
+        and m.month = p.payment_month
+      order by
+        case when m.due_date <= p.payment_date then 0 else 1 end,
+        case when m.due_date <= p.payment_date then m.due_date end desc,
+        m.due_date asc
+      limit 1
+    ),
     allocation_provenance = coalesce(p.allocation_provenance, 'legacy-due-date-ordering')
-from public.ledger_bills b
-cross join lateral (
-  select m.id
-  from public.ledger_bill_months m
-  where m.bill_id = p.bill_id
-    and m.month = p.payment_month
-  order by
-    case when m.due_date <= p.payment_date then 0 else 1 end,
-    case when m.due_date <= p.payment_date then m.due_date end desc,
-    m.due_date asc
-  limit 1
-) chosen
-where p.bill_id = b.id
-  and b.frequency = 'bi-weekly'
-  and p.occurrence_id is null;
+where p.occurrence_id is null
+  and exists (
+    select 1
+    from public.ledger_bills b
+    where b.id = p.bill_id
+      and b.frequency = 'bi-weekly'
+  )
+  and exists (
+    select 1
+    from public.ledger_bill_months m
+    where m.bill_id = p.bill_id
+      and m.month = p.payment_month
+  );
 
 create index if not exists ledger_bill_payments_occurrence_idx
   on public.ledger_bill_payments (occurrence_id, payment_date, id);
