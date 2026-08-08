@@ -35,14 +35,14 @@ test('historical migrated occurrence does not inherit the current master budget'
   assert.equal(summary.incompleteCount, 1);
 });
 
-test('summary counts only rows currently classified partial', () => {
+test('summary counts all partially paid rows, including overdue rows', () => {
   const rows = [
     { effectiveAmount: 100, status: 'partial', submitted: 20, remaining: 80, credit: 0, nextDue: '2026-08-20' },
     { effectiveAmount: 100, status: 'overdue', submitted: 20, remaining: 80, credit: 0, nextDue: '2026-08-01' },
   ];
   const summary = summarizeLedgerBills(rows, new Date('2026-08-08T12:00:00Z'));
-  assert.equal(summary.partialCount, 1);
-  assert.equal(summary.partial, 20);
+  assert.equal(summary.partialCount, 2);
+  assert.equal(summary.partial, 40);
   assert.equal(summary.overdueCount, 1);
 });
 
@@ -55,7 +55,8 @@ test('Total Paid includes submitted, partial, and overdue payment transactions',
   const summary = summarizeLedgerBills(rows, new Date('2026-08-08T12:00:00Z'));
   assert.equal(summary.totalPaid, 150);
   assert.equal(summary.submitted, 100);
-  assert.equal(summary.partial, 20);
+  assert.equal(summary.partial, 50);
+  assert.equal(summary.partialCount, 2);
 });
 
 test('bi-weekly recurrence materializes every 14-day installment including three-installment months', () => {
