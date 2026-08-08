@@ -12,7 +12,7 @@ test('status precedence is submitted then overdue then partial then future', () 
 
 test('monthly Actual overrides Budget and preserves overpayment as credit', () => {
   const bills = [{ id: 'b1', bill_name: 'Utility', bill_type: 'Personal', category: 'Utilities', account: 'TCU', budget: 150, frequency: 'monthly', due_day: 15, start_month: '2026-04-01', notes: null, is_active: true, archived_at: null }];
-  const occurrences = [{ id: 'o1', bill_id: 'b1', month: '2026-08-01', occurrence_budget_amount: 150, actual_amount: 100, due_date: '2026-08-15' }];
+  const occurrences = [{ id: 'o1', bill_id: 'b1', month: '2026-08-01', occurrence_budget_amount: 150, actual_amount: 100, due_date: '2026-08-15', migration_incomplete: false }];
   const payments = [{ id: 'p1', bill_id: 'b1', amount: 125, payment_date: '2026-08-10', funding_account: 'TCU', notes: null }];
   const [row] = buildLedgerRows(bills, occurrences, payments, { selectedMonth: '2026-08', asOf: new Date('2026-08-10T12:00:00Z') });
   assert.equal(row.effectiveAmount, 100);
@@ -20,6 +20,19 @@ test('monthly Actual overrides Budget and preserves overpayment as credit', () =
   assert.equal(row.credit, 25);
   assert.equal(row.status, 'submitted');
   assert.equal(row.transactions.length, 1);
+});
+
+test('historical migrated occurrence does not inherit the current master budget', () => {
+  const bills = [{ id: 'b1', bill_name: 'Utility', bill_type: 'Personal', category: 'Utilities', account: 'TCU', budget: 200, frequency: 'monthly', due_day: 15, start_month: '2026-04-01', notes: null, is_active: true, archived_at: null }];
+  const occurrences = [{ id: 'o1', bill_id: 'b1', month: '2026-05-01', occurrence_budget_amount: null, actual_amount: null, due_date: null, migration_incomplete: true }];
+  const [row] = buildLedgerRows(bills, occurrences, [], { selectedMonth: '2026-05', asOf: new Date('2026-08-08T12:00:00Z') });
+  assert.equal(row.masterBudget, 200);
+  assert.equal(row.budget, null);
+  assert.equal(row.effectiveAmount, null);
+  assert.equal(row.migrationIncomplete, true);
+  const summary = summarizeLedgerBills([row], new Date('2026-08-08T12:00:00Z'));
+  assert.equal(summary.total, 0);
+  assert.equal(summary.incompleteCount, 1);
 });
 
 test('summary counts only rows currently classified partial', () => {
