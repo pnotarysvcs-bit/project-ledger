@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { getLedgerBills, summarizeLedgerBills } from '../src/ledger-bills-data.js';
+import { classifyLedgerBill, getLedgerBills, summarizeLedgerBills } from '../src/ledger-bills-data.js';
 
 function jsonResponse(value) {
   return new Response(JSON.stringify(value), {
@@ -124,4 +124,43 @@ test('bulk statuses do not carry submitted state into a month without payments',
   assert.equal(augustBill.status, 'future');
   assert.equal(augustBill.submitted, 0);
   assert.equal(augustBill.remaining, 1000);
+});
+
+test('past-due occurrence with no effective amount is incomplete, not overdue', () => {
+  const status = classifyLedgerBill({
+    effectiveAmount: null,
+    submitted: 0,
+    dueDate: '2026-04-15',
+  }, new Date('2026-08-08T00:00:00Z'));
+
+  assert.equal(status, 'incomplete');
+});
+
+test('missing amount and migration data-quality counts remain separate', () => {
+  const rows = [
+    {
+      effectiveAmount: null,
+      migrationIncomplete: false,
+      submitted: 0,
+      credit: 0,
+      remaining: null,
+      status: 'incomplete',
+      nextDue: '2026-04-15',
+    },
+    {
+      effectiveAmount: 25,
+      migrationIncomplete: true,
+      submitted: 0,
+      credit: 0,
+      remaining: 25,
+      status: 'overdue',
+      nextDue: '2026-04-15',
+    },
+  ];
+
+  const summary = summarizeLedgerBills(rows, new Date('2026-08-08T00:00:00Z'));
+  assert.equal(summary.incompleteCount, 1);
+  assert.equal(summary.dataQualityCount, 1);
+  assert.equal(summary.overdueCount, 1);
+  assert.equal(summary.overdue, 25);
 });
