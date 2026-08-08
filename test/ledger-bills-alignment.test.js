@@ -32,3 +32,15 @@ test('summary counts only rows currently classified partial', () => {
   assert.equal(summary.partial, 20);
   assert.equal(summary.overdueCount, 1);
 });
+
+test('Total Paid includes submitted, partial, and overdue payment transactions', () => {
+  const rows = [
+    { effectiveAmount: 100, status: 'submitted', submitted: 100, remaining: 0, credit: 0, nextDue: '2026-08-01' },
+    { effectiveAmount: 100, status: 'partial', submitted: 20, remaining: 80, credit: 0, nextDue: '2026-08-20' },
+    { effectiveAmount: 100, status: 'overdue', submitted: 30, remaining: 70, credit: 0, nextDue: '2026-08-01' },
+  ];
+  const summary = summarizeLedgerBills(rows, new Date('2026-08-08T12:00:00Z'));
+  assert.equal(summary.totalPaid, 150);
+  assert.equal(summary.submitted, 100);
+  assert.equal(summary.partial, 20);
+});
