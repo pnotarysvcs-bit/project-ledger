@@ -101,7 +101,7 @@ table.mini td:last-child, table.mini th:last-child { padding-right: 0; }
 .legend { list-style: none; margin: 0; padding: 0; display: grid; gap: 11px; flex: 1 1 150px; }
 .legend li { display: flex; align-items: center; gap: 9px; font-size: 13px; }
 .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
-.dot.paid { background: #22c55e; } .dot.pending { background: #f59e0b; }
+.dot.paid, .dot.submitted { background: #22c55e; } .dot.pending, .dot.partial { background: #f59e0b; }
 .dot.overdue { background: #ef4444; } .dot.future { background: #3b82f6; }
 .legend-label { color: #bac4cc; flex: 1; }
 .legend-value { text-align: right; display: grid; }
@@ -110,7 +110,7 @@ table.mini td:last-child, table.mini th:last-child { padding-right: 0; }
 .ring { width: 130px; height: 130px; }
 .ring-track { fill: none; stroke: #262829; stroke-width: 14; }
 .ring-seg { fill: none; stroke-width: 14; transform: rotate(-90deg); transform-origin: 65px 65px; }
-.ring-seg.paid { stroke: #22c55e; } .ring-seg.pending { stroke: #f59e0b; }
+.ring-seg.paid, .ring-seg.submitted { stroke: #22c55e; } .ring-seg.pending, .ring-seg.partial { stroke: #f59e0b; }
 .ring-seg.overdue { stroke: #ef4444; } .ring-seg.future { stroke: #3b82f6; }
 .ring-value { fill: #f4f7f7; font-size: 22px; font-weight: bold; text-anchor: middle; }
 .ring-caption { fill: #7f8a94; font-size: 11px; text-anchor: middle; }
