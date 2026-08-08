@@ -1,186 +1,54 @@
 import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
-import { getLedgerBills, groupLedgerBills, summarizeLedgerBills } from '../src/ledger-bills-data.js';
+import { getLedgerBills, groupLedgerBills, normalizeLedgerMonth, summarizeLedgerBills } from '../src/ledger-bills-data.js';
 import { supabaseRequest } from '../src/supabase-server.js';
+import ConfirmButton from './confirm-button.js';
 
 export const dynamic = 'force-dynamic';
-
 const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
-const displayDate = (date) => date
-  ? new Intl.DateTimeFormat('en-US', { timeZone: 'UTC' }).format(new Date(`${date}T00:00:00Z`))
-  : '-';
-
-function normalizeMonth(value) {
-  if (/^\d{4}-\d{2}$/.test(value ?? '')) return value;
-  const now = new Date();
-  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, '0')}`;
-}
-
-function monthName(value) {
-  return new Intl.DateTimeFormat('en-US', {
-    timeZone: 'UTC',
-    month: 'long',
-    year: 'numeric',
-  }).format(new Date(`${value}-01T00:00:00Z`));
-}
-
+const today = () => new Date().toISOString().slice(0, 10);
+const displayDate = (date) => date ? new Intl.DateTimeFormat('en-US', { timeZone: 'UTC' }).format(new Date(`${date}T00:00:00Z`)) : '-';
+function monthName(value) { return new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', month: 'long', year: 'numeric' }).format(new Date(`${value}-01T00:00:00Z`)); }
+function returnTo(month, message) { revalidatePath('/'); revalidatePath('/dashboard'); redirect(`/?month=${month}${message ? `&notice=${encodeURIComponent(message)}` : ''}`); }
 function monthOptions(selectedMonth) {
-  const start = new Date('2026-04-01T00:00:00Z');
-  const selected = new Date(`${selectedMonth}-01T00:00:00Z`);
-  const now = new Date();
-  const end = new Date(Date.UTC(
-    Math.max(selected.getUTCFullYear(), now.getUTCFullYear()),
-    Math.max(selected.getUTCMonth(), now.getUTCMonth()) + 6,
-    1,
-  ));
-  const options = [];
-  for (const cursor = new Date(start); cursor <= end; cursor.setUTCMonth(cursor.getUTCMonth() + 1)) {
-    const value = cursor.toISOString().slice(0, 7);
-    options.push({ value, label: monthName(value) });
-  }
+  const cursor = new Date('2026-04-01T00:00:00Z'); const end = new Date(); end.setUTCMonth(Math.max(end.getUTCMonth() + 6, 11)); const options = [];
+  while (cursor <= end || cursor.toISOString().slice(0, 7) <= selectedMonth) { const value = cursor.toISOString().slice(0, 7); options.push({ value, label: monthName(value) }); cursor.setUTCMonth(cursor.getUTCMonth() + 1); }
   return options;
 }
+async function paymentsFor(id, month) { return supabaseRequest(`ledger_bill_payments?select=id,amount&bill_id=eq.${encodeURIComponent(id)}&payment_month=eq.${month}-01`); }
 
-
-async function archiveBill(formData) {
+async function archiveBill(data) { 'use server'; const id = String(data.get('id') ?? ''); const month = normalizeLedgerMonth(String(data.get('month'))); if (!id) throw new Error('Bill id is required.'); await supabaseRequest(`ledger_bills?id=eq.${encodeURIComponent(id)}`, { method: 'PATCH', body: { is_active: false, archived_at: new Date().toISOString() } }); returnTo(month, 'Bill archived.'); }
+async function addPayment(data) {
   'use server';
-
-  const id = String(formData.get('id') ?? '');
-  const month = normalizeMonth(String(formData.get('month') ?? ''));
-  if (!id) throw new Error('Bill id is required.');
-
-  await supabaseRequest(`ledger_bills?id=eq.${encodeURIComponent(id)}&select=id`, {
-    method: 'PATCH',
-    headers: { Prefer: 'return=representation' },
-    body: { is_active: false, archived_at: new Date().toISOString() },
-  });
-
-  revalidatePath('/');
-  redirect(`/?month=${month}`);
+  const id = String(data.get('id') ?? ''); const month = normalizeLedgerMonth(String(data.get('month'))); const amount = Number(data.get('amount')); const paymentDate = String(data.get('paymentDate') ?? '');
+  const [bill] = await supabaseRequest(`ledger_bills?select=budget,account&id=eq.${encodeURIComponent(id)}`); const payments = await paymentsFor(id, month); const paid = payments.reduce((sum, item) => sum + Number(item.amount), 0);
+  if (!bill || bill.budget === null) throw new Error('Enter a bill amount before recording payment.');
+  if (!Number.isFinite(amount) || amount <= 0 || paid + amount > Number(bill.budget)) throw new Error('Payment must be positive and cannot exceed the remaining balance.');
+  await supabaseRequest('ledger_bill_payments', { method: 'POST', body: { bill_id: id, amount, payment_month: `${month}-01`, payment_date: paymentDate || today(), funding_account: String(data.get('fundingAccount') || bill.account), notes: String(data.get('notes') || '') || null } });
+  returnTo(month, 'Payment recorded.');
 }
-
-async function submitBill(formData) {
-  'use server';
-
-  const id = String(formData.get('id') ?? '');
-  const month = normalizeMonth(String(formData.get('month') ?? ''));
-  const amount = Number(formData.get('amount'));
-  if (!id) throw new Error('Bill id is required.');
-  if (!Number.isFinite(amount) || amount <= 0) throw new Error('A positive payment amount is required.');
-
-  await supabaseRequest('ledger_bill_payments?select=id', {
-    method: 'POST',
-    headers: { Prefer: 'return=representation' },
-    body: {
-      bill_id: id,
-      amount,
-      payment_month: `${month}-01`,
-      payment_date: new Date().toISOString().slice(0, 10),
-    },
-  });
-
-  revalidatePath('/');
-  redirect(`/?month=${month}`);
+async function submitBill(data) { 'use server'; const id = String(data.get('id')); const month = normalizeLedgerMonth(String(data.get('month'))); const [bill] = await supabaseRequest(`ledger_bills?select=budget,account&id=eq.${encodeURIComponent(id)}`); const payments = await paymentsFor(id, month); const remaining = Number(bill?.budget) - payments.reduce((sum, p) => sum + Number(p.amount), 0); if (!bill || bill.budget === null || remaining <= 0) throw new Error('This bill is already submitted or has no amount.'); await supabaseRequest('ledger_bill_payments', { method: 'POST', body: { bill_id: id, amount: remaining, payment_month: `${month}-01`, payment_date: today(), funding_account: bill.account, notes: 'Full payment submitted' } }); returnTo(month, 'Bill submitted.'); }
+async function removePayment(data) { 'use server'; const month = normalizeLedgerMonth(String(data.get('month'))); await supabaseRequest(`ledger_bill_payments?id=eq.${encodeURIComponent(String(data.get('paymentId')))}`, { method: 'DELETE' }); returnTo(month, 'Payment removed.'); }
+async function updatePayment(data) { 'use server'; const month = normalizeLedgerMonth(String(data.get('month'))); const paymentId = String(data.get('paymentId') ?? ''); const amount = Number(data.get('amount')); const id = String(data.get('id') ?? ''); if (!paymentId || !id) throw new Error('Payment id and bill id are required.'); const paymentDate = String(data.get('paymentDate') ?? ''); if (!paymentDate || !/^\d{4}-\d{2}-\d{2}$/.test(paymentDate)) throw new Error('A valid payment date is required.'); const [bill] = await supabaseRequest(`ledger_bills?select=budget&id=eq.${encodeURIComponent(id)}`); const payments = await paymentsFor(id, month); const other = payments.filter((p) => p.id !== paymentId).reduce((s, p) => s + Number(p.amount), 0); if (!Number.isFinite(amount) || amount <= 0 || other + amount > Number(bill?.budget)) throw new Error('Payment cannot exceed the remaining balance.'); await supabaseRequest(`ledger_bill_payments?id=eq.${encodeURIComponent(paymentId)}&bill_id=eq.${encodeURIComponent(id)}`, { method: 'PATCH', body: { amount, payment_date: paymentDate } }); returnTo(month, 'Payment updated.'); }
+async function editBill(data) {
+  'use server'; const id = String(data.get('id')); const month = normalizeLedgerMonth(String(data.get('month'))); const budget = Number(data.get('budget')); const paid = (await paymentsFor(id, month)).reduce((s, p) => s + Number(p.amount), 0); if (!Number.isFinite(budget) || budget <= 0 || budget < paid) throw new Error('Amount must be positive and cannot be less than recorded payments.');
+  const account = String(data.get('account')).trim().toUpperCase(); const billType = account === 'TCUB' ? 'Business' : account === 'TCU' ? 'Personal' : String(data.get('type'));
+  const due = String(data.get('nextDue')); await supabaseRequest(`ledger_bills?id=eq.${encodeURIComponent(id)}`, { method: 'PATCH', body: { bill_name: String(data.get('name')).trim(), bill_type: billType, category: String(data.get('category')).trim(), account, budget, frequency: String(data.get('frequency')), due_day: Number(due.slice(-2)) } }); returnTo(month, 'Bill updated.');
 }
+async function bulkSubmit(data) { 'use server'; const month = normalizeLedgerMonth(String(data.get('month'))); if (month >= today().slice(0, 7)) throw new Error('Bulk Submit is available only for previous months.'); const rows = await getLedgerBills({ selectedMonth: month }); const eligible = rows.filter((b) => b.budget !== null && b.remaining > 0); if (eligible.length) await supabaseRequest('ledger_bill_payments', { method: 'POST', body: eligible.map((b) => ({ bill_id: b.id, amount: b.remaining, payment_month: `${month}-01`, payment_date: `${month}-${String(Math.min(b.dueDay, 28)).padStart(2, '0')}`, funding_account: b.account, notes: 'Bulk payment submitted' })) }); returnTo(month, `${eligible.length} bills submitted.`); }
 
 export default async function BillsPage({ searchParams }) {
-  const params = await searchParams;
-  const selectedMonth = normalizeMonth(params?.month);
-
-  let rows = [];
-  let loadError = null;
-  try {
-    rows = await getLedgerBills({ selectedMonth, asOf: new Date() });
-  } catch (error) {
-    loadError = error.message;
-  }
-
-  const summary = summarizeLedgerBills(rows);
-
-  return (
-    <>
-      <p className="eyebrow">Bill management</p>
-      <div className="page-heading-row">
-        <div>
-          <h1>{monthName(selectedMonth)} Bills</h1>
-          <p className="lede">Review active personal, streaming, and business bills from the persisted Bills Master.</p>
-        </div>
-        <form method="get" className="month-selector">
-          <label htmlFor="bills-month">Month</label>
-          <select id="bills-month" name="month" defaultValue={selectedMonth}>
-            {monthOptions(selectedMonth).map((option) => (
-              <option key={option.value} value={option.value}>{option.label}</option>
-            ))}
-          </select>
-          <button type="submit">View</button>
-        </form>
-      </div>
-
-      {loadError && <p className="alert" role="alert">Bills could not be loaded: {loadError}</p>}
-
-      <section className="summary" aria-label="Bill summary">
-        <article><span>Total Budget</span><strong>{money.format(summary.total)}</strong><small>{summary.activeCount} active bills</small></article>
-        <article><span>Submitted</span><strong>{money.format(summary.submitted)}</strong><small>{summary.submittedCount} submitted</small></article>
-        <article><span>Remaining</span><strong className="blue">{money.format(summary.remaining)}</strong><small>{summary.partialCount} partial</small></article>
-        <article><span>Due Soon</span><strong className="amber">{money.format(summary.dueSoon)}</strong><small>{summary.dueSoonCount} bills</small></article>
-      </section>
-
-      {summary.overdueCount > 0 && (
-        <p className="alert" role="status">{summary.overdueCount} overdue &middot; {money.format(summary.overdue)}</p>
-      )}
-
-      {!loadError && rows.length === 0 && (
-        <section className="panel"><p className="empty">No active bills apply to {monthName(selectedMonth)}.</p></section>
-      )}
-
-      {groupLedgerBills(rows).map(({ type, bills }) => (
-        <section className="panel" key={type}>
-          <header>
-            <strong>{type} Bills</strong>
-            <span>{bills.length} {bills.length === 1 ? 'bill' : 'bills'}</span>
-          </header>
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr><th>Bill</th><th>Type</th><th>Category</th><th>Account</th><th>Budget</th><th>Frequency</th><th>Next Due</th><th>Status</th><th>Actions</th></tr>
-              </thead>
-              <tbody>
-                {bills.map((bill) => (
-                  <tr key={bill.id}>
-                    <td><b>{bill.payee}</b>{bill.notes && <small>{bill.notes}</small>}</td>
-                    <td>{bill.type}</td>
-                    <td>{bill.category}</td>
-                    <td>{bill.account}</td>
-                    <td>{bill.budget === null ? 'Enter amount' : money.format(Math.round(bill.budget))}</td>
-                    <td>{bill.frequency}</td>
-                    <td>{displayDate(bill.nextDue)}</td>
-                    <td><span className={`status ${bill.status}`}>{bill.status.replace('-', ' ')}</span></td>
-                    <td>
-                      <div className="row-actions" aria-label={`Actions for ${bill.payee}`}>
-                        <Link className="button ghost" href={`/?month=${selectedMonth}&edit=${bill.id}`}>Edit</Link>
-                        <form action={archiveBill}>
-                          <input type="hidden" name="id" value={bill.id} />
-                          <input type="hidden" name="month" value={selectedMonth} />
-                          <button className="ghost danger" type="submit">Archive</button>
-                        </form>
-                        {bill.status !== 'submitted' && (
-                          <form action={submitBill}>
-                            <input type="hidden" name="id" value={bill.id} />
-                            <input type="hidden" name="month" value={selectedMonth} />
-                            <input type="hidden" name="amount" value={bill.remaining ?? bill.budget ?? 0} />
-                            <button type="submit">Submit</button>
-                          </form>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
-      ))}
-    </>
-  );
+  const params = await searchParams; const selectedMonth = normalizeLedgerMonth(params?.month); let rows = []; let loadError = null;
+  try { rows = await getLedgerBills({ selectedMonth }); } catch (error) { loadError = error.message; }
+  const summary = summarizeLedgerBills(rows); const selected = rows.find((b) => b.id === (params?.partial || params?.edit));
+  return <>
+    <p className="eyebrow">Bill management</p><div className="page-heading-row"><div><h1>{monthName(selectedMonth)} Bills</h1><p className="lede">Review active personal, streaming, and business bills from the persisted Bills Master.</p></div><div className="head-actions"><form method="get" className="month-selector"><label htmlFor="bills-month">Month</label><select id="bills-month" name="month" defaultValue={selectedMonth}>{monthOptions(selectedMonth).map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</select><button type="submit">View</button></form>{selectedMonth < today().slice(0, 7) && <form action={bulkSubmit}><input type="hidden" name="month" value={selectedMonth}/><ConfirmButton message={`Submit all eligible bills for ${monthName(selectedMonth)}?`}>Bulk Submit</ConfirmButton></form>}</div></div>
+    {params?.notice && <p className="success" role="status">{params.notice}</p>}{loadError && <p className="alert" role="alert">Bills could not be loaded: {loadError}</p>}
+    <section className="summary" aria-label="Bill summary"><article><span>Total Budget</span><strong>{money.format(summary.total)}</strong><small>{summary.activeCount} active bills</small></article><article><span>Submitted</span><strong>{money.format(summary.submitted)}</strong><small>{summary.submittedCount} submitted</small></article><article className="partial-card"><span>Partial</span><strong className="amber">{money.format(summary.partial)}</strong><small>{summary.partialCount} partial</small></article><article><span>Remaining</span><strong className="blue">{money.format(summary.remaining)}</strong><small>outstanding</small></article><article><span>Due Soon</span><strong className="amber">{money.format(summary.dueSoon)}</strong><small>{summary.dueSoonCount} bills</small></article></section>
+    {summary.overdueCount > 0 && <p className="alert" role="status">{summary.overdueCount} overdue &middot; {money.format(summary.overdue)}</p>}{summary.incompleteCount > 0 && <p className="alert">{summary.incompleteCount} incomplete bill amount excluded from financial totals.</p>}
+    {selected && params?.partial && <section className="panel action-panel"><header><strong>Payments for {selected.payee}</strong><Link href={`/?month=${selectedMonth}`}>Close</Link></header><form action={addPayment} className="inline-form"><input type="hidden" name="id" value={selected.id}/><input type="hidden" name="month" value={selectedMonth}/><label>Payment amount<input name="amount" type="number" min="0.01" max={selected.remaining ?? 0} step="0.01" required/></label><label>Payment date<input name="paymentDate" type="date" defaultValue={today()} required/></label><label>Funding account<input name="fundingAccount" defaultValue={selected.account} required/></label><label>Notes<input name="notes"/></label><button type="submit">Add Payment</button></form>{selected.transactions.map((p) => <form action={updatePayment} className="payment-row" key={p.id}><input type="hidden" name="id" value={selected.id}/><input type="hidden" name="month" value={selectedMonth}/><input type="hidden" name="paymentId" value={p.id}/><input aria-label="Payment amount" name="amount" type="number" step="0.01" defaultValue={p.amount}/><input aria-label="Payment date" name="paymentDate" type="date" defaultValue={p.paymentDate}/><button type="submit">Update</button><button formAction={removePayment} className="ghost danger">Remove</button></form>)}</section>}
+    {selected && params?.edit && <section className="panel action-panel"><header><strong>Edit {selected.payee}</strong><Link href={`/?month=${selectedMonth}`}>Close</Link></header><form action={editBill} className="inline-form"><input type="hidden" name="id" value={selected.id}/><input type="hidden" name="month" value={selectedMonth}/>{[['name','Bill name',selected.payee],['type','Type',selected.type],['category','Category',selected.category],['account','Account',selected.account]].map(([n,l,v]) => <label key={n}>{l}<input name={n} defaultValue={v} required/></label>)}<label>Monthly amount<input name="budget" type="number" min="0.01" step="0.01" defaultValue={selected.budget ?? ''} required/></label><label>Frequency<select name="frequency" defaultValue={selected.frequency}>{['monthly','bi-weekly','quarterly','annual','one-time'].map((v) => <option key={v}>{v}</option>)}</select></label><label>Next due date<input name="nextDue" type="date" defaultValue={selected.nextDue} required/></label><button type="submit">Save</button></form></section>}
+    {groupLedgerBills(rows).map(({ type, bills }) => <section className="panel" key={type}><header><strong>{type} Bills</strong><span>{bills.length} {bills.length === 1 ? 'bill' : 'bills'}</span></header><div className="table-wrap"><table><thead><tr><th>Bill</th><th>Type</th><th>Category</th><th>Account</th><th>Budget</th><th>Frequency</th><th>Next Due</th><th>Status</th><th>Actions</th></tr></thead><tbody>{bills.map((bill) => <tr key={bill.id}><td><b>{bill.payee}</b>{bill.submitted > 0 && <small>Paid {money.format(bill.submitted)} · Remaining {money.format(bill.remaining ?? 0)}</small>}</td><td>{bill.type}</td><td>{bill.category}</td><td>{bill.account}</td><td>{bill.budget === null ? 'Enter amount' : money.format(bill.budget)}</td><td>{bill.frequency}</td><td>{displayDate(bill.nextDue)}</td><td><span className={`status ${bill.status}`}>{bill.status}</span></td><td><div className="row-actions" aria-label={`Actions for ${bill.payee}`}><form action={submitBill}><input type="hidden" name="id" value={bill.id}/><input type="hidden" name="month" value={selectedMonth}/><button type="submit" disabled={bill.status === 'submitted' || bill.budget === null}>Submit</button></form><Link className={`button partial ${bill.remaining === 0 ? 'disabled' : ''}`} aria-disabled={bill.remaining === 0} href={bill.remaining === 0 ? `/?month=${selectedMonth}` : `/?month=${selectedMonth}&partial=${bill.id}`}>Partial</Link><Link className="button ghost" href={`/?month=${selectedMonth}&edit=${bill.id}`}>Edit</Link><form action={archiveBill}><input type="hidden" name="id" value={bill.id}/><input type="hidden" name="month" value={selectedMonth}/><ConfirmButton className="ghost danger" message={`Archive ${bill.payee}?`}>Archive</ConfirmButton></form></div></td></tr>)}</tbody></table></div></section>)}
+  </>;
 }

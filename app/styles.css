@@ -42,6 +42,8 @@ td b, td small { display: block; } td small { margin-top: 6px; }
 .status.paid { color: #16e1ab; background: #12372d; }
 .status.submitted { color: #65b5ff; background: #142c42; border: 1px solid #27547b; }
 .status.due-soon { color: #ffd25c; background: #403311; }
+.status.partial { color: #ffd25c; background: #403311; border: 1px solid #6b5518; }
+.status.future { color: #9fb0bd; background: #22282d; border: 1px solid #38424b; }
 .status.upcoming { color: #9fb0bd; background: #22282d; border: 1px solid #38424b; }
 .status.inactive { color: #7f8a94; background: #1d1f20; border: 1px solid #2f3335; }
 .account-form { padding: 20px; display: grid; gap: 18px; max-width: 520px; }
@@ -101,7 +103,7 @@ table.mini td:last-child, table.mini th:last-child { padding-right: 0; }
 .legend { list-style: none; margin: 0; padding: 0; display: grid; gap: 11px; flex: 1 1 150px; }
 .legend li { display: flex; align-items: center; gap: 9px; font-size: 13px; }
 .dot { width: 9px; height: 9px; border-radius: 50%; flex: none; }
-.dot.paid { background: #22c55e; } .dot.pending { background: #f59e0b; }
+.dot.paid, .dot.submitted { background: #22c55e; } .dot.pending, .dot.partial { background: #f59e0b; }
 .dot.overdue { background: #ef4444; } .dot.future { background: #3b82f6; }
 .legend-label { color: #bac4cc; flex: 1; }
 .legend-value { text-align: right; display: grid; }
@@ -110,7 +112,7 @@ table.mini td:last-child, table.mini th:last-child { padding-right: 0; }
 .ring { width: 130px; height: 130px; }
 .ring-track { fill: none; stroke: #262829; stroke-width: 14; }
 .ring-seg { fill: none; stroke-width: 14; transform: rotate(-90deg); transform-origin: 65px 65px; }
-.ring-seg.paid { stroke: #22c55e; } .ring-seg.pending { stroke: #f59e0b; }
+.ring-seg.paid, .ring-seg.submitted { stroke: #22c55e; } .ring-seg.pending, .ring-seg.partial { stroke: #f59e0b; }
 .ring-seg.overdue { stroke: #ef4444; } .ring-seg.future { stroke: #3b82f6; }
 .ring-value { fill: #f4f7f7; font-size: 22px; font-weight: bold; text-anchor: middle; }
 .ring-caption { fill: #7f8a94; font-size: 11px; text-anchor: middle; }
@@ -148,5 +150,17 @@ table.mini td:last-child, table.mini th:last-child { padding-right: 0; }
 .row-actions form { margin: 0; }
 .row-actions button, .row-actions .button { padding: 8px 11px; font-size: 13px; white-space: nowrap; }
 button:disabled { cursor: not-allowed; opacity: .45; }
+.button.partial { background: #ffbd00; color: #241b00; }
+.button.disabled { pointer-events: none; opacity: .45; background: #555; color: #ddd; }
+.partial-card { border-color: #6b5518 !important; }
+.success { margin: 0 0 20px; padding: 12px 16px; border-radius: 10px; color: #16e1ab; background: #12372d; border: 1px solid #24634f; }
+.action-panel { padding-bottom: 18px; }
+.action-panel a { color: #00d6a3; text-decoration: none; }
+.inline-form { padding: 18px 20px 0; display: flex; gap: 12px; align-items: end; flex-wrap: wrap; }
+.inline-form label { display: grid; gap: 6px; color: #bac4cc; font-size: 13px; }
+.inline-form input, .inline-form select, .payment-row input { background: #0f1011; border: 1px solid #333637; border-radius: 9px; padding: 10px; color: #f4f7f7; }
+.payment-row { margin: 12px 20px 0; display: flex; gap: 8px; flex-wrap: wrap; }
+.month-selector { display: flex; gap: 8px; align-items: center; }
+.month-selector select { background: #171818; border: 1px solid #292b2c; border-radius: 9px; padding: 9px; color: #f4f7f7; }
 button.danger { border-color: #6b2830; color: #ff6872; }
 button.danger:hover { background: #3d171c; }
