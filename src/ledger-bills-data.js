@@ -119,6 +119,7 @@ export function summarizeLedgerBills(rows, asOf = new Date()) {
   return rows.reduce((summary, bill) => {
     const effectiveAmount = bill.effectiveAmount ?? 0;
     summary.total += effectiveAmount;
+    summary.totalPaid += bill.submitted ?? 0;
     summary.activeCount += 1;
     summary.credit += bill.credit ?? 0;
 
@@ -150,6 +151,7 @@ export function summarizeLedgerBills(rows, asOf = new Date()) {
     return summary;
   }, {
     total: 0,
+    totalPaid: 0,
     submitted: 0,
     partial: 0,
     remaining: 0,
