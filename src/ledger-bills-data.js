@@ -1,143 +1,109 @@
 import { supabaseRequest } from './supabase-server.js';
 
-function monthStart(value) {
-  const match = /^\d{4}-\d{2}$/.test(value ?? '') ? value : null;
-  const date = match ? new Date(`${match}-01T00:00:00Z`) : new Date();
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
+const DAY = 86400000;
+
+export function normalizeLedgerMonth(value, fallback = new Date()) {
+  if (/^\d{4}-\d{2}$/.test(value ?? '')) return value;
+  return fallback.toISOString().slice(0, 7);
 }
 
-function isoMonth(date) {
-  return date.toISOString().slice(0, 7);
-}
-
-function lastDayOfMonth(date) {
-  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0)).getUTCDate();
-}
-
-function dueDateForMonth(month, dueDay) {
-  const day = Math.min(Number(dueDay), lastDayOfMonth(month));
-  return `${isoMonth(month)}-${String(day).padStart(2, '0')}`;
-}
-
+function monthDate(value) { return new Date(`${normalizeLedgerMonth(value)}-01T00:00:00Z`); }
 function monthDifference(start, selected) {
-  return (selected.getUTCFullYear() - start.getUTCFullYear()) * 12
-    + selected.getUTCMonth() - start.getUTCMonth();
+  return (selected.getUTCFullYear() - start.getUTCFullYear()) * 12 + selected.getUTCMonth() - start.getUTCMonth();
 }
-
 function appliesToMonth(bill, selected) {
-  const start = new Date(`${bill.start_month}T00:00:00Z`);
-  const difference = monthDifference(start, selected);
+  const difference = monthDifference(new Date(`${bill.start_month}T00:00:00Z`), selected);
   if (difference < 0) return false;
-
-  switch (bill.frequency) {
-    case 'monthly':
-    case 'bi-weekly':
-      return true;
-    case 'quarterly':
-      return difference % 3 === 0;
-    case 'annual':
-      return difference % 12 === 0;
-    case 'one-time':
-      return difference === 0;
-    default:
-      return false;
-  }
+  if (bill.frequency === 'quarterly') return difference % 3 === 0;
+  if (bill.frequency === 'annual') return difference % 12 === 0;
+  if (bill.frequency === 'one-time') return difference === 0;
+  return ['monthly', 'bi-weekly'].includes(bill.frequency);
+}
+function dueDateForMonth(selected, dueDay) {
+  const last = new Date(Date.UTC(selected.getUTCFullYear(), selected.getUTCMonth() + 1, 0)).getUTCDate();
+  return `${selected.toISOString().slice(0, 7)}-${String(Math.min(Number(dueDay), last)).padStart(2, '0')}`;
+}
+function activeInMonth(bill, selected) {
+  if (bill.is_active) return true;
+  if (!bill.archived_at) return false;
+  return new Date(bill.archived_at) >= new Date(Date.UTC(selected.getUTCFullYear(), selected.getUTCMonth() + 1, 1));
 }
 
-function calculateStatus({ submitted, budget, dueDate, asOf }) {
-  // Payment progress is month-specific. Never let a persisted status (for
-  // example, one written by a bulk update) mark a month as submitted without
-  // confirmed payments in that same month.
+/** The single status precedence used by the Bills table and Dashboard overview. */
+export function classifyLedgerBill({ budget, submitted, dueDate }, asOf = new Date()) {
   if (budget !== null && submitted >= budget) return 'submitted';
+  if (new Date(`${dueDate}T23:59:59Z`) < asOf) return 'overdue';
   if (submitted > 0) return 'partial';
+  return 'future';
+}
 
-  const due = new Date(`${dueDate}T23:59:59Z`);
-  if (due < asOf) return 'overdue';
-  return 'due-soon';
+export function buildLedgerRows(bills, payments, { selectedMonth, asOf = new Date() } = {}) {
+  const selected = monthDate(selectedMonth);
+  const byBill = new Map();
+  for (const payment of payments) {
+    const list = byBill.get(payment.bill_id) ?? [];
+    list.push({ id: payment.id, amount: Number(payment.amount), paymentDate: payment.payment_date, fundingAccount: payment.funding_account, notes: payment.notes });
+    byBill.set(payment.bill_id, list);
+  }
+  return bills.filter((bill) => activeInMonth(bill, selected) && appliesToMonth(bill, selected)).map((bill) => {
+    const budget = bill.budget === null ? null : Number(bill.budget);
+    const transactions = byBill.get(bill.id) ?? [];
+    const submitted = transactions.reduce((sum, payment) => sum + payment.amount, 0);
+    const nextDue = dueDateForMonth(selected, bill.due_day);
+    return {
+      id: bill.id, payee: bill.bill_name, type: bill.bill_type, category: bill.category,
+      account: bill.account, budget, frequency: bill.frequency, nextDue, dueDay: bill.due_day,
+      startMonth: bill.start_month, notes: bill.notes, submitted,
+      remaining: budget === null ? null : Math.max(budget - submitted, 0), transactions,
+      status: classifyLedgerBill({ budget, submitted, dueDate: nextDue }, asOf),
+    };
+  });
 }
 
 export async function getLedgerBills({ selectedMonth, asOf = new Date() } = {}) {
-  const selected = monthStart(selectedMonth);
-  const month = `${isoMonth(selected)}-01`;
-
+  const month = `${normalizeLedgerMonth(selectedMonth)}-01`;
   const [bills, payments] = await Promise.all([
-    supabaseRequest(`ledger_bills?select=id,bill_name,bill_type,category,account,budget,frequency,due_day,start_month,notes,is_active&is_active=eq.true&start_month=lte.${month}&order=bill_name.asc`),
-    supabaseRequest(`ledger_bill_payments?select=bill_id,amount,payment_date&payment_month=eq.${month}`),
+    supabaseRequest(`ledger_bills?select=id,bill_name,bill_type,category,account,budget,frequency,due_day,start_month,notes,is_active,archived_at&start_month=lte.${month}&order=bill_name.asc`),
+    supabaseRequest(`ledger_bill_payments?select=id,bill_id,amount,payment_date,funding_account,notes&payment_month=eq.${month}&order=payment_date.asc`),
   ]);
-
-  const paymentsByBill = new Map();
-  for (const payment of payments) {
-    const current = paymentsByBill.get(payment.bill_id) ?? 0;
-    paymentsByBill.set(payment.bill_id, current + Number(payment.amount));
-  }
-
-  return bills
-    .filter((bill) => appliesToMonth(bill, selected))
-    .map((bill) => {
-      const budget = bill.budget === null ? null : Number(bill.budget);
-      const submitted = paymentsByBill.get(bill.id) ?? 0;
-      const dueDate = dueDateForMonth(selected, bill.due_day);
-      const status = calculateStatus({
-        submitted,
-        budget,
-        dueDate,
-        asOf,
-      });
-
-      return {
-        id: bill.id,
-        payee: bill.bill_name,
-        type: bill.bill_type,
-        category: bill.category,
-        account: bill.account,
-        budget,
-        frequency: bill.frequency,
-        nextDue: dueDate,
-        status,
-        submitted,
-        remaining: budget === null ? null : Math.max(budget - submitted, 0),
-        notes: bill.notes,
-      };
-    });
+  return buildLedgerRows(bills, payments, { selectedMonth, asOf });
 }
 
 export function summarizeLedgerBills(rows) {
-  return rows.reduce((summary, bill) => {
+  return rows.reduce((s, bill) => {
     const budget = bill.budget ?? 0;
-    summary.total += budget;
-    summary.submitted += bill.submitted;
-    summary.remaining += bill.remaining ?? 0;
-    summary.activeCount += 1;
-    if (bill.status === 'submitted') summary.submittedCount += 1;
-    if (bill.status === 'partial') summary.partialCount += 1;
-    if (bill.status === 'overdue') {
-      summary.overdue += bill.remaining ?? budget;
-      summary.overdueCount += 1;
+    s.total += budget; s.activeCount += 1;
+    if (bill.budget === null) s.incompleteCount += 1;
+    if (bill.status === 'submitted') { s.submitted += budget; s.submittedCount += 1; }
+    else {
+      s.remaining += bill.remaining ?? 0;
+      if (bill.submitted > 0) { s.partial += bill.submitted; s.partialCount += 1; }
     }
-    if (bill.status === 'due-soon') {
-      summary.dueSoon += bill.remaining ?? budget;
-      summary.dueSoonCount += 1;
+    if (bill.status === 'overdue') { s.overdue += bill.remaining ?? 0; s.overdueCount += 1; }
+    const days = (new Date(`${bill.nextDue}T00:00:00Z`) - new Date(new Date(s.asOf).toISOString().slice(0, 10))) / DAY;
+    if (!['submitted', 'overdue'].includes(bill.status) && bill.remaining > 0 && days >= 0 && days <= 7) {
+      s.dueSoon += bill.remaining; s.dueSoonCount += 1;
     }
-    return summary;
-  }, {
-    total: 0,
-    submitted: 0,
-    remaining: 0,
-    overdue: 0,
-    dueSoon: 0,
-    activeCount: 0,
-    submittedCount: 0,
-    partialCount: 0,
-    overdueCount: 0,
-    dueSoonCount: 0,
+    return s;
+  }, { total: 0, submitted: 0, partial: 0, remaining: 0, overdue: 0, dueSoon: 0, activeCount: 0, submittedCount: 0, partialCount: 0, overdueCount: 0, dueSoonCount: 0, incompleteCount: 0, asOf: new Date() });
+}
+
+export function getLedgerOverview(rows) {
+  const definitions = [
+    ['submitted', 'Submitted', (b) => b.budget ?? 0],
+    ['overdue', 'Overdue', (b) => b.remaining ?? 0],
+    ['partial', 'Partial', (b) => b.submitted],
+    ['future', 'Future', (b) => b.remaining ?? 0],
+  ];
+  return definitions.map(([key, label, amount]) => {
+    const bills = rows.filter((bill) => bill.status === key);
+    return { key, label, count: bills.length, amount: bills.reduce((sum, bill) => sum + amount(bill), 0) };
   });
 }
 
 export function groupLedgerBills(rows) {
-  const groups = new Map();
-  for (const bill of rows) {
+  return [...rows.reduce((groups, bill) => {
     if (!groups.has(bill.type)) groups.set(bill.type, []);
-    groups.get(bill.type).push(bill);
-  }
-  return [...groups.entries()].map(([type, bills]) => ({ type, bills }));
+    groups.get(bill.type).push(bill); return groups;
+  }, new Map()).entries()].map(([type, bills]) => ({ type, bills }));
 }

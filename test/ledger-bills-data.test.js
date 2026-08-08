@@ -107,7 +107,7 @@ test('bulk statuses do not carry submitted state into a month without payments',
   });
 
   assert.equal(julyBill.status, 'overdue');
-  assert.equal(augustBill.status, 'due-soon');
+  assert.equal(augustBill.status, 'future');
   assert.equal(augustBill.submitted, 0);
   assert.equal(augustBill.remaining, 1000);
 });

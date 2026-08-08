@@ -1,13 +1,6 @@
-import { getBillsMaster } from '../../src/bills-master.js';
+import { getLedgerBills, getLedgerOverview, summarizeLedgerBills } from '../../src/ledger-bills-data.js';
+import { toRingSegments } from '../../src/dashboard.js';
 import {
-  getDueSoon,
-  getMonthSummary,
-  getRecentActivity,
-  getStatusBreakdown,
-  toRingSegments,
-} from '../../src/dashboard.js';
-import {
-  dateForDashboardMonth,
   labelForDashboardMonth,
   resolveDashboardMonth,
 } from '../../src/dashboard-months.js';
@@ -38,13 +31,11 @@ export default async function DashboardPage({ searchParams }) {
   const params = await searchParams;
   const now = new Date();
   const selectedMonth = resolveDashboardMonth(params?.month, now);
-  const reportingDate = dateForDashboardMonth(selectedMonth);
-  const rows = getBillsMaster({ asOf: reportingDate });
-
-  const summary = getMonthSummary(rows, { asOf: reportingDate });
-  const dueSoon = getDueSoon(getBillsMaster({ asOf: now }), { asOf: now, days: 7 });
-  const breakdown = getStatusBreakdown(rows, { asOf: reportingDate });
-  const activity = getRecentActivity(rows);
+  const rows = await getLedgerBills({ selectedMonth, asOf: now });
+  const summary = summarizeLedgerBills(rows);
+  const dueSoon = rows.filter((bill) => !['submitted', 'overdue'].includes(bill.status) && bill.remaining > 0 && (asDate(bill.nextDue) - now) / 86400000 >= 0 && (asDate(bill.nextDue) - now) / 86400000 <= 7);
+  const breakdown = getLedgerOverview(rows);
+  const activity = rows.flatMap((bill) => bill.transactions.map((payment) => ({ id: payment.id, label: bill.status === 'submitted' ? 'Payment Submitted' : 'Partial Payment', tone: 'good', payee: bill.payee, date: payment.paymentDate, amount: payment.amount }))).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 4);
   const segments = toRingSegments(breakdown, RING_CIRCUMFERENCE);
   const month = labelForDashboardMonth(selectedMonth);
 
@@ -64,25 +55,25 @@ export default async function DashboardPage({ searchParams }) {
         <article className="stat">
           <span className="bubble purple" aria-hidden="true" />
           <span>Total Monthly Budget</span>
-          <strong>{money.format(summary.budget)}</strong>
+          <strong>{money.format(summary.total)}</strong>
           <small>for {month}</small>
         </article>
         <article className="stat">
           <span className="bubble green" aria-hidden="true" />
-          <span>Total Paid (Matched)</span>
-          <strong className="green">{money.format(summary.paid)}</strong>
-          <small className="green">{summary.percentOfBudget}% of budget</small>
+          <span>Total Paid</span>
+          <strong className="green">{money.format(summary.submitted)}</strong>
+          <small className="green">{summary.submittedCount} submitted</small>
         </article>
         <article className="stat">
           <span className="bubble amber" aria-hidden="true" />
-          <span>Remaining to Pay</span>
-          <strong className="amber">{money.format(summary.remaining)}</strong>
-          <small className="amber">{plural(summary.remainingCount, 'bill')} remaining</small>
+          <span>Partial</span>
+          <strong className="amber">{money.format(summary.partial)}</strong>
+          <small className="amber">{plural(summary.partialCount, 'bill')} partial</small>
         </article>
         <article className="stat">
           <span className="bubble red" aria-hidden="true" />
           <span>Overdue</span>
-          <strong className="red">{money.format(summary.overdue)}</strong>
+          <strong className="red">{summary.overdueCount}</strong>
           <small className="red">{plural(summary.overdueCount, 'bill')} overdue</small>
         </article>
         <article className="stat">
@@ -109,7 +100,7 @@ export default async function DashboardPage({ searchParams }) {
                   <tr key={bill.id}>
                     <td>{dayLabel.format(asDate(bill.nextDue))}</td>
                     <td>{bill.payee}</td>
-                    <td>{money.format(bill.amount)}</td>
+                    <td>{money.format(bill.remaining)}</td>
                     <td><span className={`status ${bill.status}`}>{bill.status.replace('-', ' ')}</span></td>
                   </tr>
                 ))}
@@ -135,7 +126,7 @@ export default async function DashboardPage({ searchParams }) {
               ))}
             </ul>
             <div className="ring-wrap">
-              <svg viewBox="0 0 130 130" className="ring" role="img" aria-label={`${summary.percentOfBudget}% of ${month}'s budget paid`}>
+              <svg viewBox="0 0 130 130" className="ring" role="img" aria-label={`${summary.submittedCount} bills submitted for ${month}`}>
                 <circle cx="65" cy="65" r={RING_RADIUS} className="ring-track" />
                 {segments.filter(({ length }) => length > 0).map(({ key, length, offset }) => (
                   <circle
@@ -148,14 +139,14 @@ export default async function DashboardPage({ searchParams }) {
                     strokeDashoffset={-offset}
                   />
                 ))}
-                <text x="65" y="62" className="ring-value">{summary.percentOfBudget}%</text>
+                <text x="65" y="62" className="ring-value">{summary.activeCount ? Math.round(summary.submittedCount / summary.activeCount * 100) : 0}%</text>
                 <text x="65" y="80" className="ring-caption">Complete</text>
               </svg>
             </div>
           </div>
           <footer>
-            <span className="muted">{summary.paidCount} of {plural(summary.paidCount + summary.remainingCount, 'bill')} paid</span>
-            <div className="progress-track"><div className="progress-fill" style={{ width: `${summary.percentOfBudget}%` }} /></div>
+            <span className="muted">{summary.submittedCount} of {plural(summary.activeCount, 'bill')} submitted</span>
+            <div className="progress-track"><div className="progress-fill" style={{ width: `${summary.activeCount ? summary.submittedCount / summary.activeCount * 100 : 0}%` }} /></div>
           </footer>
         </article>
 
