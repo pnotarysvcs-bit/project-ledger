@@ -77,7 +77,7 @@ export default async function DashboardPage({ searchParams }) {
         <article className="stat"><span className="bubble purple" aria-hidden="true" /><span>Total Monthly Budget</span><strong>{money.format(summary.total)}</strong><small>for {month}</small></article>
         <article className="stat"><span className="bubble green" aria-hidden="true" /><span>Total Paid</span><strong className="green">{money.format(summary.totalPaid)}</strong><small className="green">all recorded payments</small></article>
         <article className="stat"><span className="bubble amber" aria-hidden="true" /><span>Partial</span><strong className="amber">{money.format(summary.partial)}</strong><small className="amber">{plural(summary.partialCount, 'bill')} partial</small></article>
-        <article className="stat"><span className="bubble red" aria-hidden="true" /><span>Overdue</span><strong className="red">{summary.overdueCount}</strong><small className="red">{plural(summary.overdueCount, 'bill')} overdue</small></article>
+        <article className="stat"><span className="bubble red" aria-hidden="true" /><span>Overdue</span><strong className="red">{money.format(summary.overdue)}</strong><small className="red">{plural(summary.overdueCount, 'bill')} overdue</small></article>
         <article className="stat"><span className="bubble blue" aria-hidden="true" /><span>Active Bills</span><strong className="blue">{summary.activeCount}</strong><small>tracked for {month}</small></article>
       </section>
 
