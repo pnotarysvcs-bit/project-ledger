@@ -36,7 +36,7 @@ function activeInMonth(bill, selected) {
   return new Date(bill.archived_at) >= new Date(Date.UTC(selected.getUTCFullYear(), selected.getUTCMonth() + 1, 1));
 }
 
-/** The single status precedence used by the Bills table and Dashboard overview. */
+/** Single precedence shared by Bills and Dashboard: Submitted → Overdue → Partial → Future. */
 export function classifyLedgerBill({ effectiveAmount, submitted, dueDate }, asOf = new Date()) {
   if (effectiveAmount !== null && submitted >= effectiveAmount) return 'submitted';
   if (new Date(`${dueDate}T23:59:59Z`) < asOf) return 'overdue';
@@ -44,12 +44,13 @@ export function classifyLedgerBill({ effectiveAmount, submitted, dueDate }, asOf
   return 'future';
 }
 
-export function buildLedgerRows(bills, payments, { selectedMonth, asOf = new Date() } = {}) {
+export function buildLedgerRows(bills, occurrences, payments, { selectedMonth, asOf = new Date() } = {}) {
   const selected = monthDate(selectedMonth);
-  const byBill = new Map();
+  const occurrenceByBill = new Map(occurrences.map((row) => [row.bill_id, row]));
+  const paymentsByBill = new Map();
 
   for (const payment of payments) {
-    const list = byBill.get(payment.bill_id) ?? [];
+    const list = paymentsByBill.get(payment.bill_id) ?? [];
     list.push({
       id: payment.id,
       amount: Number(payment.amount),
@@ -57,28 +58,34 @@ export function buildLedgerRows(bills, payments, { selectedMonth, asOf = new Dat
       fundingAccount: payment.funding_account,
       notes: payment.notes,
     });
-    byBill.set(payment.bill_id, list);
+    paymentsByBill.set(payment.bill_id, list);
   }
 
   return bills
     .filter((bill) => activeInMonth(bill, selected) && appliesToMonth(bill, selected))
     .map((bill) => {
-      const budget = bill.budget === null ? null : Number(bill.budget);
-      const actualAmount = bill.actual_amount === null || bill.actual_amount === undefined
+      const occurrence = occurrenceByBill.get(bill.id);
+      const masterBudget = bill.budget === null ? null : Number(bill.budget);
+      const occurrenceBudget = occurrence?.occurrence_budget_amount === null || occurrence?.occurrence_budget_amount === undefined
+        ? masterBudget
+        : Number(occurrence.occurrence_budget_amount);
+      const actualAmount = occurrence?.actual_amount === null || occurrence?.actual_amount === undefined
         ? null
-        : Number(bill.actual_amount);
-      const effectiveAmount = actualAmount ?? budget;
-      const transactions = byBill.get(bill.id) ?? [];
+        : Number(occurrence.actual_amount);
+      const effectiveAmount = actualAmount ?? occurrenceBudget;
+      const transactions = paymentsByBill.get(bill.id) ?? [];
       const submitted = transactions.reduce((sum, payment) => sum + payment.amount, 0);
-      const nextDue = dueDateForMonth(selected, bill.due_day);
+      const nextDue = occurrence?.due_date || dueDateForMonth(selected, bill.due_day);
 
       return {
         id: bill.id,
+        occurrenceId: occurrence?.id ?? null,
         payee: bill.bill_name,
         type: bill.bill_type,
         category: bill.category,
         account: bill.account,
-        budget,
+        masterBudget,
+        budget: occurrenceBudget,
         actualAmount,
         effectiveAmount,
         frequency: bill.frequency,
@@ -96,17 +103,18 @@ export function buildLedgerRows(bills, payments, { selectedMonth, asOf = new Dat
 }
 
 export async function getLedgerBills({ selectedMonth, asOf = new Date() } = {}) {
-  const month = `${normalizeLedgerMonth(selectedMonth)}-01`;
-  const [bills, payments] = await Promise.all([
-    supabaseRequest(`ledger_bills?select=id,bill_name,bill_type,category,account,budget,actual_amount,frequency,due_day,start_month,notes,is_active,archived_at&start_month=lte.${month}&order=bill_name.asc`),
+  const normalized = normalizeLedgerMonth(selectedMonth);
+  const month = `${normalized}-01`;
+  const [bills, occurrences, payments] = await Promise.all([
+    supabaseRequest(`ledger_bills?select=id,bill_name,bill_type,category,account,budget,frequency,due_day,start_month,notes,is_active,archived_at&start_month=lte.${month}&order=bill_name.asc`),
+    supabaseRequest(`ledger_bill_months?select=id,bill_id,month,occurrence_budget_amount,actual_amount,due_date&month=eq.${month}`),
     supabaseRequest(`ledger_bill_payments?select=id,bill_id,amount,payment_date,funding_account,notes&payment_month=eq.${month}&order=payment_date.asc`),
   ]);
-  return buildLedgerRows(bills, payments, { selectedMonth, asOf });
+  return buildLedgerRows(bills, occurrences, payments, { selectedMonth: normalized, asOf });
 }
 
 export function summarizeLedgerBills(rows, asOf = new Date()) {
-  const todayStr = asOf.toISOString().slice(0, 10);
-  const today = new Date(`${todayStr}T00:00:00Z`);
+  const today = new Date(`${asOf.toISOString().slice(0, 10)}T00:00:00Z`);
 
   return rows.reduce((summary, bill) => {
     const effectiveAmount = bill.effectiveAmount ?? 0;
