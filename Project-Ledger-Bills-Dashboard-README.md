@@ -2,7 +2,7 @@
 
 **Document:** Project-Ledger-Bills-Dashboard-README (Authoritative)
 **Status:** Approved (authoritative doc for bills + dashboard behavior)
-**Version:** 1.1.3
+**Version:** 1.1.4
 **Approval Date:** 2026-08-08
 
 ## Purpose
@@ -97,6 +97,7 @@ This authoritative README consolidates the approved Phase 1 Bills requirements a
 
 - RULE-106 — Credit Synchronization
   - Credit Amount is a derived financial result of confirmed Payments Made versus Effective Amount. If a materialized credit/overpayment record is persisted for accounting or audit purposes, it must be transactionally upserted, reduced, or removed whenever a related payment, Actual Bill Amount, or occurrence Budget override is created, edited, deleted, confirmed, cleared, or otherwise changed. This includes a Budget override while `actual_amount` is null because that override changes Effective Amount. A stale credit record must never survive when recalculation produces a smaller or zero Credit Amount.
+  - The synchronization invariant is `materialized_credit.amount = max(sum(confirmed payments) - Effective Amount, 0)`. When the result is zero, no active materialized credit row may remain; implementations must enforce this invariant after both payment mutations and occurrence amount mutations.
 
 - RULE-107 — Historical Preservation on Delete
   - A Bills Master record with any historical occurrence, payment, credit, or reporting dependency must not be hard-deleted through a cascading delete path. Delete must be implemented as a soft delete/archive, or hard delete must be restricted to master records that have no historical occurrences or financial history. Historical rows and payment transactions must be preserved. Database foreign keys on occurrences, payments, credits, and audit/reporting records must use restrictive/no-action deletion semantics (not `ON DELETE CASCADE`) wherever a master deletion could erase that history; the service must verify the no-history condition in the same transaction as any permitted hard delete.
@@ -131,6 +132,7 @@ This authoritative README consolidates the approved Phase 1 Bills requirements a
 
 - FR-009 — Delete Bill (clarified)
   - Delete must preserve historical financial data. A master with occurrences, payments, credits, or prior reporting history must use soft delete/archive and must not invoke cascading hard deletes. Hard delete may be permitted only for a master record with no historical or financial dependencies and only after server-side validation confirms that condition.
+  - The delete API must not rely on database cascades to decide whether history exists: it must perform the dependency check and permitted delete atomically, and a concurrent insertion of an occurrence or payment must cause the hard delete to fail rather than erase the new history.
 
 - FR-010 — Active State (unchanged)
 
@@ -172,6 +174,7 @@ This authoritative README consolidates the approved Phase 1 Bills requirements a
   - Backfill `created_by` with a documented migration/system actor when an original actor is unavailable, preserving original timestamps and payment data wherever present.
   - Backfill `funding_account` before making it required. Use the payment’s existing nonblank value first; otherwise use the bill/account mapping only when that mapping is uniquely and historically valid for the payment date. When neither source is reliable, assign a dedicated non-posting `Legacy — Unspecified` funding-account record, preserve the payment in historical totals, and flag it for remediation. This sentinel must not be treated as a real cash account or used for new payments.
   - Constraints that require `occurrence_id`, `created_by`, `confirmed_flag`, or `funding_account` must not be enforced until the backfill has completed and validation confirms that every legacy month row has been represented, every payment is linked and funded, no `migration_incomplete` occurrence remains, and no eligible historical row would be dropped from reporting. The rollout order is mandatory: add new columns as nullable; create/backfill occurrences; populate and validate every payment field; compare pre- and post-migration row counts and confirmed historical totals; then enable `NOT NULL`/foreign-key constraints and confirmed-only calculations. Any failed validation aborts constraint activation.
+  - The migration must be idempotent and resumable: rerunning it must resolve the same occurrence for each source bill/month or installment, must not duplicate payments or occurrences, and must preserve recorded migration provenance.
 
 ## Dependencies (update)
 
@@ -247,6 +250,7 @@ This authoritative README consolidates the approved Phase 1 Bills requirements a
 ## Data Model Notes (developer guidance)
 
 - Occurrence table (example fields): occurrence_id, bill_master_id, reporting_month (YYYY-MM), installment_sequence, occurrence_budget_amount (nullable), actual_amount (nullable), status, due_date (required), migration_state, migration_provenance, created_at, updated_at. Uniqueness must identify a due-date-scoped installment (for example, bill_master_id + due_date), not bill_master_id + reporting_month alone.
+  - `occurrence_budget_amount` and `actual_amount` are independent columns and must never alias the same storage field. Creating an occurrence from a master Budget writes only `occurrence_budget_amount`; `actual_amount` remains SQL `NULL` until an invoice or confirmed amount is explicitly supplied.
 
 - Payments table (example fields): payment_id, occurrence_id, payment_date, amount, funding_account, notes (nullable), created_by, created_at, confirmed_flag.
 
