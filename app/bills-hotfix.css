@@ -105,6 +105,49 @@
   justify-content: center;
 }
 
+.add-bill-panel {
+  margin-bottom: 20px;
+}
+
+.add-bill-form {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  gap: 12px;
+  padding: 16px;
+}
+
+.add-bill-form label {
+  display: grid;
+  gap: 6px;
+  color: #bac4cc;
+  font-size: 12px;
+}
+
+.add-bill-form input,
+.add-bill-form select {
+  width: 100%;
+  height: 38px;
+  min-width: 0;
+  padding: 0 10px;
+  border: 1px solid #333637;
+  border-radius: 9px;
+  background: #0f1011;
+  color: #f4f7f7;
+  font-size: 14px;
+}
+
+.add-bill-notes {
+  grid-column: span 2;
+}
+
+.add-bill-actions {
+  grid-column: span 2;
+  display: flex;
+  align-items: end;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
 .income-summary {
   display: flex;
   align-items: baseline;
@@ -175,6 +218,10 @@ td:last-child {
   .bill-filters {
     grid-template-columns: repeat(2, minmax(160px, 1fr));
   }
+
+  .add-bill-form {
+    grid-template-columns: repeat(2, minmax(160px, 1fr));
+  }
 }
 
 @media (max-width: 760px) {
@@ -211,13 +258,30 @@ td:last-child {
     width: 100%;
   }
 
-  .head-actions > form:not(.month-selector) > button {
+  .head-actions > form:not(.month-selector) > button,
+  .head-actions > .button {
     width: 100%;
   }
 
-  .bill-filters {
+  .bill-filters,
+  .add-bill-form {
     grid-template-columns: 1fr;
     padding: 12px;
+  }
+
+  .add-bill-notes,
+  .add-bill-actions {
+    grid-column: auto;
+  }
+
+  .add-bill-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .add-bill-actions button,
+  .add-bill-actions .button {
+    width: 100%;
   }
 
   .filter-actions {
