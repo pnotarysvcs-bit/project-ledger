@@ -35,7 +35,7 @@ This authoritative README consolidates the approved Phase 1 Bills requirements a
 
 - Payments Made: The sum of one or more confirmed payment transactions attached to a monthly occurrence. Each payment includes: payment date, amount, funding_account (required), and optional notes.
 
-- Effective Amount: Actual Bill Amount when Actual is non-null; otherwise the occurrence Budget Amount. Financial status, Remaining Balance, overdue evaluation, and Submit calculations use Effective Amount unless a requirement explicitly states otherwise.
+- Effective Amount: The Actual Bill Amount when the Actual Bill Amount field for the occurrence is non-null and has been explicitly set; otherwise the occurrence Budget Amount. Financial status, Remaining Balance, overdue evaluation, and Submit calculations use Effective Amount unless a requirement explicitly states otherwise.
 
 - Remaining Balance = max(Effective Amount - Payments Made, 0)
 
