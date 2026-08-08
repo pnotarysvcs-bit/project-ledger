@@ -69,7 +69,8 @@ export async function getLedgerBills({ selectedMonth, asOf = new Date() } = {}) 
   return buildLedgerRows(bills, payments, { selectedMonth, asOf });
 }
 
-export function summarizeLedgerBills(rows) {
+export function summarizeLedgerBills(rows, asOf = new Date()) {
+  const todayStr = asOf.toISOString().slice(0, 10);
   return rows.reduce((s, bill) => {
     const budget = bill.budget ?? 0;
     s.total += budget; s.activeCount += 1;
@@ -77,15 +78,15 @@ export function summarizeLedgerBills(rows) {
     if (bill.status === 'submitted') { s.submitted += budget; s.submittedCount += 1; }
     else {
       s.remaining += bill.remaining ?? 0;
-      if (bill.submitted > 0) { s.partial += bill.submitted; s.partialCount += 1; }
+      if (bill.status === 'partial') { s.partial += bill.submitted; s.partialCount += 1; }
     }
     if (bill.status === 'overdue') { s.overdue += bill.remaining ?? 0; s.overdueCount += 1; }
-    const days = (new Date(`${bill.nextDue}T00:00:00Z`) - new Date(new Date(s.asOf).toISOString().slice(0, 10))) / DAY;
+    const days = (new Date(`${bill.nextDue}T00:00:00Z`) - new Date(`${todayStr}T00:00:00Z`)) / DAY;
     if (!['submitted', 'overdue'].includes(bill.status) && bill.remaining > 0 && days >= 0 && days <= 7) {
       s.dueSoon += bill.remaining; s.dueSoonCount += 1;
     }
     return s;
-  }, { total: 0, submitted: 0, partial: 0, remaining: 0, overdue: 0, dueSoon: 0, activeCount: 0, submittedCount: 0, partialCount: 0, overdueCount: 0, dueSoonCount: 0, incompleteCount: 0, asOf: new Date() });
+  }, { total: 0, submitted: 0, partial: 0, remaining: 0, overdue: 0, dueSoon: 0, activeCount: 0, submittedCount: 0, partialCount: 0, overdueCount: 0, dueSoonCount: 0, incompleteCount: 0 });
 }
 
 export function getLedgerOverview(rows) {

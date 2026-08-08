@@ -32,8 +32,9 @@ export default async function DashboardPage({ searchParams }) {
   const now = new Date();
   const selectedMonth = resolveDashboardMonth(params?.month, now);
   const rows = await getLedgerBills({ selectedMonth, asOf: now });
-  const summary = summarizeLedgerBills(rows);
-  const dueSoon = rows.filter((bill) => !['submitted', 'overdue'].includes(bill.status) && bill.remaining > 0 && (asDate(bill.nextDue) - now) / 86400000 >= 0 && (asDate(bill.nextDue) - now) / 86400000 <= 7);
+  const summary = summarizeLedgerBills(rows, now);
+  const todayDate = new Date(`${now.toISOString().slice(0, 10)}T00:00:00Z`);
+  const dueSoon = rows.filter((bill) => !['submitted', 'overdue'].includes(bill.status) && bill.remaining > 0 && (asDate(bill.nextDue) - todayDate) / 86400000 >= 0 && (asDate(bill.nextDue) - todayDate) / 86400000 <= 7);
   const breakdown = getLedgerOverview(rows);
   const activity = rows.flatMap((bill) => bill.transactions.map((payment) => ({ id: payment.id, label: bill.status === 'submitted' ? 'Payment Submitted' : 'Partial Payment', tone: 'good', payee: bill.payee, date: payment.paymentDate, amount: payment.amount }))).sort((a, b) => b.date.localeCompare(a.date)).slice(0, 4);
   const segments = toRingSegments(breakdown, RING_CIRCUMFERENCE);
