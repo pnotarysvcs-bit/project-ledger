@@ -2,6 +2,7 @@ import { inflateSync } from 'node:zlib';
 import { createHash } from 'node:crypto';
 
 const MONEY = /\$?(\d{1,3}(?:,\d{3})*\.\d{2})-?/g;
+const AMOUNT_BALANCE_PAIR = /\$?(\d{1,3}(?:,\d{3})*\.\d{2})-\s*\$?(\d{1,3}(?:,\d{3})*\.\d{2})-/g;
 const START = /(\d{2}\/\d{2})(?=(?:Withdrawal|CardPurchase|Deposit|Comment))/g;
 const BILL_WORDS = /(payment|pay|insurance|mutual|water|utility|utilities|mobile|wireless|internet|loan|credit|card|mortgage|rent|property|affirm|afterpay|upgrade|missionlane|sirius|fidelity|wci)/i;
 const EXCLUDED_WORDS = /(starbucks|burgerking|doordash|baskin|nailbar|dollartree|cashapp|venmo|restaurant|grill|fish|chic|tiktok|schnucks|ontherun|atm)/i;
@@ -87,6 +88,22 @@ function amountValues(segment) {
   return values;
 }
 
+export function extractTransactionAmount(segment) {
+  // Credit-union statement rows end with “transaction amount - running balance -”.
+  // Read that explicit pair first so phone/reference digits or nearby rows cannot
+  // be mistaken for the transaction amount. Fall back to the legacy money scan
+  // only for statement layouts that do not expose the pair cleanly.
+  const pairs = [];
+  let match;
+  AMOUNT_BALANCE_PAIR.lastIndex = 0;
+  while ((match = AMOUNT_BALANCE_PAIR.exec(segment))) {
+    pairs.push(Number(match[1].replaceAll(',', '')));
+  }
+  if (pairs.length) return pairs.at(-1);
+  const values = amountValues(segment);
+  return values.length >= 2 ? values.at(-2) : null;
+}
+
 function rawPayee(segment) {
   return segment
     .replace(/^(Withdrawal(?:ACH|BillPayment)?|CardPurchase)/, '')
@@ -116,9 +133,8 @@ export function parseStatementTransactions(compactText, period) {
     const kind = segment.startsWith('Withdrawal') ? 'withdrawal' : segment.startsWith('CardPurchase') ? 'card' : segment.startsWith('Deposit') ? 'deposit' : 'comment';
     if (kind === 'deposit' || kind === 'comment') continue;
     if (/^Withdrawal(?:OverdraftFee|ATM|Transfer)/.test(segment)) continue;
-    const amounts = amountValues(segment);
-    if (amounts.length < 2) continue;
-    const amount = amounts.at(-2);
+    const amount = extractTransactionAmount(segment);
+    if (amount === null) continue;
     const description = rawPayee(segment) || segment.slice(0, 180);
     transactions.push({
       transactionDate: isoDate(current[1], year),
@@ -179,6 +195,10 @@ export function matchTransactions(transactions, bills, aliases = []) {
       if (!best || score > best.score) best = { bill, score, nameScore, expectedAmount };
     }
 
+    // A strong payee/alias match is enough to associate multiple payments in the
+    // same month to one bill occurrence even when each payment amount differs
+    // from the monthly expected amount. The amount difference is surfaced as a
+    // variance rather than causing a duplicate/new bill.
     if (best && best.nameScore >= 0.72 && best.score >= 0.7) {
       const variance = best.expectedAmount !== null && Math.abs(transaction.amount - Number(best.expectedAmount)) > 0.01;
       return {
