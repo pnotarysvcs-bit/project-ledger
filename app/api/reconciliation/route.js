@@ -46,6 +46,22 @@ async function loadImport(id) {
   return serializeImport(record, transactions, bills);
 }
 
+function transactionRows(importId, transactions) {
+  return transactions.map((transaction) => ({
+    import_id: importId,
+    transaction_key: transaction.transactionKey,
+    transaction_date: transaction.transactionDate,
+    raw_description: transaction.rawDescription,
+    normalized_payee: transaction.normalizedPayee,
+    amount: transaction.amount,
+    match_status: transaction.matchStatus,
+    matched_bill_id: transaction.matchedBillId ?? null,
+    matched_occurrence_id: transaction.matchedOccurrenceId ?? null,
+    expected_amount: transaction.expectedAmount ?? null,
+    decision: transaction.matchStatus === 'excluded' ? 'excluded_by_rule' : null,
+  }));
+}
+
 export async function GET(request) {
   try {
     const id = new URL(request.url).searchParams.get('id');
@@ -68,18 +84,22 @@ export async function POST(request) {
     const buffer = Buffer.from(await file.arrayBuffer());
     const hash = statementHash(buffer);
 
-    const existing = await supabaseRequest(`ledger_statement_imports?select=*&statement_hash=eq.${hash}&limit=1`);
-    if (existing?.[0]) {
-      const result = await loadImport(existing[0].id);
-      return NextResponse.json({ ...result, duplicateUpload: true });
-    }
-
-    // First pass detects the statement month; the selected-month Master Bills are then used for matching.
     const detected = parseAndMatchStatement(buffer, [], []);
     const detectedMonth = detected.period.detectedMonth;
-    const confirmedMonth = overrideMonthRaw ? normalizeLedgerMonth(overrideMonthRaw) : detectedMonth;
+    const existing = await supabaseRequest(`ledger_statement_imports?select=*&statement_hash=eq.${hash}&limit=1`);
+    const existingRecord = existing?.[0] ?? null;
+    const existingMonth = existingRecord?.confirmed_month?.slice(0, 7) ?? null;
+    const confirmedMonth = overrideMonthRaw ? normalizeLedgerMonth(overrideMonthRaw) : (existingMonth || detectedMonth);
     if (!confirmedMonth) {
       return NextResponse.json({ error: 'This statement spans more than one calendar month. Select the reporting month and upload again.', period: detected.period }, { status: 422 });
+    }
+
+    // Completed reconciliations are immutable/idempotent. A duplicate statement
+    // that is still in review is deliberately reparsed using the current parser
+    // so UAT fixes and saved aliases can be applied without creating duplicates.
+    if (existingRecord?.status === 'completed') {
+      const result = await loadImport(existingRecord.id);
+      return NextResponse.json({ ...result, duplicateUpload: true });
     }
 
     const [bills, aliases] = await Promise.all([
@@ -88,39 +108,46 @@ export async function POST(request) {
     ]);
     const parsed = parseAndMatchStatement(buffer, bills, aliases ?? []);
 
-    const created = await supabaseRequest('ledger_statement_imports?select=*', {
-      method: 'POST',
-      headers: { Prefer: 'return=representation' },
-      body: {
-        statement_hash: hash,
-        file_name: file.name || 'statement.pdf',
-        detected_period_start: parsed.period.start,
-        detected_period_end: parsed.period.end,
-        detected_month: parsed.period.detectedMonth ? `${parsed.period.detectedMonth}-01` : null,
-        confirmed_month: `${confirmedMonth}-01`,
-        status: 'review',
-      },
-    });
-    const importRecord = created?.[0];
+    let importRecord = existingRecord;
+    if (importRecord) {
+      await supabaseRequest(`ledger_statement_transactions?import_id=eq.${encodeURIComponent(importRecord.id)}&payment_id=is.null`, { method: 'DELETE' });
+      const updated = await supabaseRequest(`ledger_statement_imports?id=eq.${encodeURIComponent(importRecord.id)}&select=*`, {
+        method: 'PATCH',
+        headers: { Prefer: 'return=representation' },
+        body: {
+          file_name: file.name || importRecord.file_name || 'statement.pdf',
+          detected_period_start: parsed.period.start,
+          detected_period_end: parsed.period.end,
+          detected_month: parsed.period.detectedMonth ? `${parsed.period.detectedMonth}-01` : null,
+          confirmed_month: `${confirmedMonth}-01`,
+          status: 'review',
+          completed_at: null,
+        },
+      });
+      importRecord = updated?.[0] ?? importRecord;
+    } else {
+      const created = await supabaseRequest('ledger_statement_imports?select=*', {
+        method: 'POST',
+        headers: { Prefer: 'return=representation' },
+        body: {
+          statement_hash: hash,
+          file_name: file.name || 'statement.pdf',
+          detected_period_start: parsed.period.start,
+          detected_period_end: parsed.period.end,
+          detected_month: parsed.period.detectedMonth ? `${parsed.period.detectedMonth}-01` : null,
+          confirmed_month: `${confirmedMonth}-01`,
+          status: 'review',
+        },
+      });
+      importRecord = created?.[0];
+    }
     if (!importRecord) throw new Error('Statement import was not confirmed by the database.');
 
-    const rows = parsed.transactions.map((transaction) => ({
-      import_id: importRecord.id,
-      transaction_key: transaction.transactionKey,
-      transaction_date: transaction.transactionDate,
-      raw_description: transaction.rawDescription,
-      normalized_payee: transaction.normalizedPayee,
-      amount: transaction.amount,
-      match_status: transaction.matchStatus,
-      matched_bill_id: transaction.matchedBillId ?? null,
-      matched_occurrence_id: transaction.matchedOccurrenceId ?? null,
-      expected_amount: transaction.expectedAmount ?? null,
-      decision: transaction.matchStatus === 'excluded' ? 'excluded_by_rule' : null,
-    }));
+    const rows = transactionRows(importRecord.id, parsed.transactions);
     if (rows.length) await supabaseRequest('ledger_statement_transactions', { method: 'POST', body: rows });
 
     const result = await loadImport(importRecord.id);
-    return NextResponse.json(result, { status: 201 });
+    return NextResponse.json({ ...result, duplicateUpload: Boolean(existingRecord) }, { status: existingRecord ? 200 : 201 });
   } catch (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
