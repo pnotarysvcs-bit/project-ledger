@@ -1,0 +1,4 @@
+/* User-approved Bills workspace presentation: do not display the Future status badge. */
+.status.future {
+  display: none;
+}
