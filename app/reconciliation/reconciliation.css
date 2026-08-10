@@ -2,23 +2,17 @@
   vertical-align: top;
 }
 
-.reconciliation-action {
-  min-width: 360px;
-}
-
-.reconciliation-action summary {
-  cursor: pointer;
-  margin-bottom: 10px;
-  color: #dbe3ea;
-}
-
-.reconciliation-action form {
+.reconciliation-filters {
   display: grid;
-  grid-template-columns: minmax(180px, 1.5fr) minmax(150px, 1fr);
-  gap: 10px 12px;
+  grid-template-columns: minmax(180px, 220px) minmax(260px, 1fr) auto;
+  gap: 12px;
   align-items: end;
+  padding: 14px 20px;
+  border-bottom: 1px solid #292b2c;
 }
 
+.reconciliation-filters label,
+.row-edit label,
 .reconciliation-action label {
   display: grid;
   gap: 6px;
@@ -26,6 +20,9 @@
   font-size: 12px;
 }
 
+.reconciliation-filters input,
+.reconciliation-filters select,
+.row-edit input,
 .reconciliation-action input,
 .reconciliation-action select,
 .manual-match select {
@@ -39,6 +36,61 @@
   font-size: 13px;
 }
 
+.reconciliation-filters > span {
+  color: #7f8a94;
+  font-size: 12px;
+  white-space: nowrap;
+  padding-bottom: 10px;
+}
+
+.reconciliation-controls {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-width: 310px;
+}
+
+.matched-note {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 10px;
+  border-radius: 8px;
+  background: #12372d;
+  color: #16e1ab;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.reconciliation-action {
+  min-width: 360px;
+}
+
+.reconciliation-action summary,
+.row-edit summary {
+  cursor: pointer;
+  color: #dbe3ea;
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  padding: 0 10px;
+  border: 1px solid #333637;
+  border-radius: 8px;
+}
+
+.reconciliation-action[open] summary,
+.row-edit[open] summary {
+  margin-bottom: 10px;
+}
+
+.reconciliation-action form {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.5fr) minmax(150px, 1fr);
+  gap: 10px 12px;
+  align-items: end;
+}
+
 .reconciliation-action form > div {
   grid-column: 1 / -1;
   display: flex;
@@ -47,29 +99,50 @@
   margin-top: 2px;
 }
 
+.row-edit form {
+  display: grid;
+  grid-template-columns: 135px minmax(220px, 1fr) 120px auto;
+  gap: 8px;
+  align-items: end;
+  min-width: 560px;
+}
+
 .reconciliation-action button,
-.manual-match button {
+.manual-match button,
+.row-edit button,
+.reconciliation-controls > button {
   min-height: 36px;
   white-space: nowrap;
 }
 
 .manual-match {
   display: grid;
-  grid-template-columns: minmax(180px, 1fr) auto auto;
+  grid-template-columns: minmax(210px, 1fr) auto;
   gap: 8px;
   align-items: center;
-  min-width: 360px;
+  min-width: 320px;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1000px) {
+  .reconciliation-filters {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .reconciliation-filters > span {
+    grid-column: 1 / -1;
+    padding-bottom: 0;
+  }
+
   .reconciliation-action,
   .manual-match {
     min-width: 280px;
   }
 
   .reconciliation-action form,
-  .manual-match {
+  .manual-match,
+  .row-edit form {
     grid-template-columns: 1fr;
+    min-width: 280px;
   }
 
   .reconciliation-action form > div {
