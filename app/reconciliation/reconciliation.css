@@ -1,0 +1,79 @@
+.reconciliation-table td {
+  vertical-align: top;
+}
+
+.reconciliation-action {
+  min-width: 360px;
+}
+
+.reconciliation-action summary {
+  cursor: pointer;
+  margin-bottom: 10px;
+  color: #dbe3ea;
+}
+
+.reconciliation-action form {
+  display: grid;
+  grid-template-columns: minmax(180px, 1.5fr) minmax(150px, 1fr);
+  gap: 10px 12px;
+  align-items: end;
+}
+
+.reconciliation-action label {
+  display: grid;
+  gap: 6px;
+  color: #bac4cc;
+  font-size: 12px;
+}
+
+.reconciliation-action input,
+.reconciliation-action select,
+.manual-match select {
+  width: 100%;
+  min-height: 36px;
+  padding: 8px 10px;
+  border: 1px solid #333637;
+  border-radius: 8px;
+  background: #0f1011;
+  color: #f4f7f7;
+  font-size: 13px;
+}
+
+.reconciliation-action form > div {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.reconciliation-action button,
+.manual-match button {
+  min-height: 36px;
+  white-space: nowrap;
+}
+
+.manual-match {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto auto;
+  gap: 8px;
+  align-items: center;
+  min-width: 360px;
+}
+
+@media (max-width: 900px) {
+  .reconciliation-action,
+  .manual-match {
+    min-width: 280px;
+  }
+
+  .reconciliation-action form,
+  .manual-match {
+    grid-template-columns: 1fr;
+  }
+
+  .reconciliation-action form > div {
+    grid-column: 1;
+    flex-wrap: wrap;
+  }
+}
