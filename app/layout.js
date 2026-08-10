@@ -1,6 +1,7 @@
 import './styles.css';
 import './bills-enhancements.css';
 import './bills-hotfix.css';
+import './status-visibility.css';
 import './reconciliation/reconciliation.css';
 import Nav from './nav.js';
 import BillsFilterFix from './bills-filter-fix.js';
