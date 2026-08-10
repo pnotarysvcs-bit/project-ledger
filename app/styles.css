@@ -150,3 +150,66 @@ table.mini td:last-child, table.mini th:last-child { padding-right: 0; }
 button:disabled { cursor: not-allowed; opacity: .45; }
 button.danger { border-color: #6b2830; color: #ff6872; }
 button.danger:hover { background: #3d171c; }
+
+/* Statement reconciliation */
+.reconciliation-upload-form {
+  display: grid;
+  grid-template-columns: minmax(300px, 1.2fr) minmax(220px, .7fr) auto;
+  grid-template-rows: auto auto;
+  align-items: end;
+  gap: 8px 18px;
+  padding: 18px 20px 20px;
+}
+.reconciliation-upload-form label {
+  display: grid;
+  gap: 8px;
+  color: #bac4cc;
+  font-size: 14px;
+}
+.reconciliation-upload-form input[type="month"] {
+  height: 38px;
+  min-width: 190px;
+  background: #0f1011;
+  border: 1px solid #333637;
+  border-radius: 9px;
+  padding: 7px 10px;
+  color: #f4f7f7;
+}
+.reconciliation-upload-form input[type="file"] {
+  min-height: 38px;
+  color: #dbe3ea;
+}
+.reconciliation-upload-form > small {
+  grid-column: 2;
+  grid-row: 2;
+  align-self: start;
+  color: #7f8a94;
+  line-height: 1.35;
+}
+.reconciliation-upload-form > button {
+  grid-column: 3;
+  grid-row: 1;
+  min-height: 38px;
+  align-self: end;
+  white-space: nowrap;
+}
+.reconciliation-summary { margin-top: 20px; }
+.reconciliation-note { margin: 0; padding: 14px 20px 18px; color: #7f8a94; }
+.reconciliation-complete { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin: 0 0 20px; }
+.reconciliation-complete small { color: #7f8a94; }
+.manual-match { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.manual-match select { min-width: 180px; }
+
+@media (max-width: 980px) {
+  .reconciliation-upload-form {
+    grid-template-columns: 1fr 1fr;
+  }
+  .reconciliation-upload-form > small { grid-column: 2; grid-row: 2; }
+  .reconciliation-upload-form > button { grid-column: 1 / -1; grid-row: 3; justify-self: start; }
+}
+
+@media (max-width: 640px) {
+  .reconciliation-upload-form { grid-template-columns: 1fr; }
+  .reconciliation-upload-form > small,
+  .reconciliation-upload-form > button { grid-column: 1; grid-row: auto; }
+}
