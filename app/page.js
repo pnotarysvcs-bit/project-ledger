@@ -212,11 +212,13 @@ async function editBill(data) {
   if (budget === null && actualAmount === null) throw new Error('Enter either a Budget Amount or an Actual Bill Amount.');
   const account = String(data.get('account')).trim().toUpperCase();
   const category = String(data.get('category') ?? '').trim();
-  if (invalidCategory(category)) throw new Error('Business and Personal are Types, not Categories. Choose a bill category.');
+  if (category && invalidCategory(category)) throw new Error('Business and Personal are Types, not Categories. Choose a bill category.');
   const billType = account.startsWith('TCUB') ? 'Business' : account.startsWith('TCU') ? 'Personal' : String(data.get('type')).trim();
   const dueDate = String(data.get('nextDue') ?? '');
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) throw new Error('A valid Next Due date is required.');
-  await supabaseRequest(`ledger_bills?id=eq.${encodeURIComponent(id)}`, { method: 'PATCH', body: { bill_name: String(data.get('name')).trim(), bill_type: billType, category: category || null, account, frequency: String(data.get('frequency')) } });
+  const masterPatch = { bill_name: String(data.get('name')).trim(), bill_type: billType, account, frequency: String(data.get('frequency')) };
+  if (category) masterPatch.category = category;
+  await supabaseRequest(`ledger_bills?id=eq.${encodeURIComponent(id)}`, { method: 'PATCH', body: masterPatch });
   if (!occurrenceId) {
     const existing = await supabaseRequest(`ledger_bill_months?select=id&bill_id=eq.${encodeURIComponent(id)}&month=eq.${month}-01&due_date=eq.${dueDate}`);
     occurrenceId = existing?.[0]?.id ?? '';
