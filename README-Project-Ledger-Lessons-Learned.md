@@ -58,13 +58,12 @@ Future Project Ledger changes should follow this release path:
 6. Supabase Preview migrations and database health are validated when schema or persistence changes are included.
 7. Review findings are corrected, documented, and resolved individually.
 8. The pull request must be mergeable with all required checks green.
-9. The pull request is merged into `main` only after the pre-production release gate is satisfied.
-10. The exact `main` merge commit is verified in CI and Vercel Production.
-11. When schema or persistence changes are included, the Production Supabase migration history is verified against the migrations required by the deployed `main` commit.
-12. Production schema compatibility is verified directly, including all required tables, columns, constraints, indexes, and other database objects used by the deployed application.
-13. Production data-preservation controls are verified by reconciling critical row counts or other approved control totals before and after migration when applicable.
-14. A live Production smoke test is performed for Dashboard, Bills, and Accounts using familiar persisted data.
-15. The release is declared operational only after both application and Production database validation pass.
+9. When schema or persistence changes are included, apply the backward-compatible Production migration before deploying dependent application code, then verify Production migration history and required tables, columns, constraints, indexes, and other database objects. A non-backward-compatible change requires an approved expand/contract rollout or maintenance mode with a tested rollback path.
+10. The pull request is merged into `main` only after the pre-production gate and applicable Production schema-compatibility gate are satisfied.
+11. The exact `main` merge commit is verified in CI and Vercel Production.
+12. Production data-preservation controls are verified by reconciling critical row counts and applicable financial or other control totals before and after migration.
+13. A live Production smoke test is performed for Dashboard, Bills, and Accounts using familiar persisted data.
+14. The release is declared operational only after both application and Production database validation pass.
 
 ## Required Release Gate
 
@@ -76,11 +75,12 @@ A Project Ledger release is ready for production use only when all applicable co
 - Supabase Preview database/migrations: PASS when applicable
 - Review threads: RESOLVED
 - Pull request: MERGEABLE
+- Production Supabase migration history: MATCHES REQUIRED RELEASE before dependent application deployment when applicable
+- Production schema compatibility: VERIFIED before dependent application deployment when applicable
+- Expand/contract or maintenance-mode rollout and rollback path: APPROVED when a schema change is not backward-compatible
 - Production deployment from `main`: SUCCESS
 - Post-merge CI: PASS
-- Production Supabase migration history: MATCHES DEPLOYED RELEASE when applicable
-- Production schema compatibility: VERIFIED when applicable
-- Production data-preservation/control totals: VERIFIED when applicable
+- Production data preservation: ROW COUNTS AND APPLICABLE FINANCIAL/OTHER CONTROL TOTALS VERIFIED when applicable
 - Dashboard Production smoke test: PASS
 - Bills Production smoke test: PASS
 - Accounts Production smoke test: PASS
