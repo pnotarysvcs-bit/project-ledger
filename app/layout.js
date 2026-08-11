@@ -3,6 +3,7 @@ import './bills-enhancements.css';
 import './bills-hotfix.css';
 import Nav from './nav.js';
 import BillsFilterFix from './bills-filter-fix.js';
+import MonthAutoSubmit from './month-auto-submit.js';
 
 export const metadata = {
   title: 'Project Ledger',
@@ -14,6 +15,7 @@ export default function RootLayout({ children }) {
     <html lang="en">
       <body>
         <BillsFilterFix />
+        <MonthAutoSubmit />
         <div className="shell">
           <Nav />
           <main>{children}</main>
