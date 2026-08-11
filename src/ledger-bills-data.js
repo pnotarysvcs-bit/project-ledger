@@ -63,13 +63,13 @@ function activeInMonth(bill, selected) {
   return new Date(bill.archived_at) >= new Date(Date.UTC(selected.getUTCFullYear(), selected.getUTCMonth() + 1, 1));
 }
 
-/** Single precedence shared by Bills and Dashboard: Incomplete → Submitted → Overdue → Partial → Future. */
+/** Single precedence shared by Bills and Dashboard: Incomplete → Submitted → Overdue → Partial → blank/open. */
 export function classifyLedgerBill({ effectiveAmount, submitted, dueDate }, asOf = new Date()) {
   if (effectiveAmount === null) return 'incomplete';
   if (submitted >= effectiveAmount) return 'submitted';
   if (new Date(`${dueDate}T23:59:59Z`) < asOf) return 'overdue';
   if (submitted > 0) return 'partial';
-  return 'future';
+  return '';
 }
 
 function expectedBills(bills, selectedMonth) {
@@ -119,7 +119,6 @@ export async function ensureLedgerOccurrencesForMonth(selectedMonth) {
 
 export function buildLedgerRows(bills, occurrences, payments, { selectedMonth, asOf = new Date() } = {}) {
   const normalized = normalizeLedgerMonth(selectedMonth);
-  const selected = monthDate(normalized);
   const occurrencesByBill = new Map();
   for (const occurrence of occurrences) {
     const list = occurrencesByBill.get(occurrence.bill_id) ?? [];
@@ -209,7 +208,7 @@ export function buildLedgerRows(bills, occurrences, payments, { selectedMonth, a
     }
   }
 
-  return rows.sort((a, b) => a.payee.localeCompare(b.payee) || a.nextDue.localeCompare(b.nextDue));
+  return rows.sort((a, b) => String(a.nextDue).localeCompare(String(b.nextDue)) || a.payee.localeCompare(b.payee));
 }
 
 export async function getLedgerBills({ selectedMonth, asOf = new Date() } = {}) {
@@ -289,7 +288,6 @@ export function getLedgerOverview(rows) {
     ['submitted', 'Submitted', (bill) => bill.effectiveAmount ?? 0],
     ['overdue', 'Overdue', (bill) => bill.remaining ?? 0],
     ['partial', 'Partial', (bill) => bill.submitted],
-    ['future', 'Future', (bill) => bill.remaining ?? 0],
   ];
 
   return definitions.map(([key, label, amount]) => {
