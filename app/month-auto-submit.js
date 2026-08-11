@@ -10,9 +10,10 @@ export default function MonthAutoSubmit() {
     const form = select.closest('form');
     if (!form) return undefined;
 
+    form.querySelector("button[type='submit']")?.remove();
+
     const handleChange = () => {
-      if (typeof form.requestSubmit === 'function') form.requestSubmit();
-      else form.submit();
+      form.submit();
     };
 
     select.addEventListener('change', handleChange);
