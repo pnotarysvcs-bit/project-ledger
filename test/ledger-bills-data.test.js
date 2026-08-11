@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { classifyLedgerBill, getLedgerBills, summarizeLedgerBills } from '../src/ledger-bills-data.js';
+import { buildLedgerRows, classifyLedgerBill, getLedgerBills, getLedgerOverview, summarizeLedgerBills } from '../src/ledger-bills-data.js';
 
 function jsonResponse(value) {
   return new Response(JSON.stringify(value), {
@@ -10,7 +10,7 @@ function jsonResponse(value) {
   });
 }
 
-test('April 2026 returns all 48 active seeded bills alphabetically', async (t) => {
+test('April 2026 returns all 48 active seeded bills with stable tie ordering', async (t) => {
   process.env.SUPABASE_URL = 'https://example.supabase.co';
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-key';
 
@@ -49,6 +49,25 @@ test('April 2026 returns all 48 active seeded bills alphabetically', async (t) =
   assert.equal(summarizeLedgerBills(rows).activeCount, 48);
 });
 
+test('Bills are ordered by Next Due date before bill name', () => {
+  const bills = [
+    { id: 'late', bill_name: 'Alpha', bill_type: 'Personal', category: 'Home', account: 'TCU', budget: '10', frequency: 'monthly', due_day: 28, start_month: '2026-08-01', notes: null, is_active: true },
+    { id: 'early-z', bill_name: 'Zulu', bill_type: 'Personal', category: 'Home', account: 'TCU', budget: '10', frequency: 'monthly', due_day: 5, start_month: '2026-08-01', notes: null, is_active: true },
+    { id: 'early-a', bill_name: 'Beta', bill_type: 'Personal', category: 'Home', account: 'TCU', budget: '10', frequency: 'monthly', due_day: 5, start_month: '2026-08-01', notes: null, is_active: true },
+  ];
+
+  const rows = buildLedgerRows(bills, [], [], {
+    selectedMonth: '2026-08',
+    asOf: new Date('2026-08-01T00:00:00Z'),
+  });
+
+  assert.deepEqual(rows.map((bill) => [bill.payee, bill.nextDue]), [
+    ['Beta', '2026-08-05'],
+    ['Zulu', '2026-08-05'],
+    ['Alpha', '2026-08-28'],
+  ]);
+});
+
 test('one-time, quarterly, and annual bills follow their scheduled months', async (t) => {
   process.env.SUPABASE_URL = 'https://example.supabase.co';
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-key';
@@ -75,7 +94,7 @@ test('one-time, quarterly, and annual bills follow their scheduled months', asyn
   assert.deepEqual(july.map((bill) => bill.id), ['monthly', 'quarterly']);
 });
 
-test('bulk statuses do not carry submitted state into a month without payments', async (t) => {
+test('bulk statuses do not carry submitted state into a month without payments and upcoming bills have no Future label', async (t) => {
   process.env.SUPABASE_URL = 'https://example.supabase.co';
   process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-key';
 
@@ -121,9 +140,10 @@ test('bulk statuses do not carry submitted state into a month without payments',
   });
 
   assert.equal(julyBill.status, 'overdue');
-  assert.equal(augustBill.status, 'future');
+  assert.equal(augustBill.status, '');
   assert.equal(augustBill.submitted, 0);
   assert.equal(augustBill.remaining, 1000);
+  assert.equal(getLedgerOverview([augustBill]).some((item) => item.label === 'Future'), false);
 });
 
 test('past-due occurrence with no effective amount is incomplete, not overdue', () => {
