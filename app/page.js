@@ -1,17 +1,16 @@
 import Link from 'next/link';
-import { redirect } from 'next/navigation';
-import { revalidatePath } from 'next/cache';
 import { getLedgerBills, groupLedgerBills, normalizeLedgerMonth, summarizeLedgerBills } from '../src/ledger-bills-data.js';
-import { supabaseRequest } from '../src/supabase-server.js';
 import {
   addBillAction,
   addPaymentAction,
   archiveBillAction,
+  bulkSubmitAction,
   editBillAction,
   removePaymentAction,
   submitBillAction,
   updatePaymentAction,
 } from './bills-actions.js';
+import BillsMonthSelector from './bills-month-selector.js';
 import ConfirmButton from './confirm-button.js';
 
 export const dynamic = 'force-dynamic';
@@ -23,13 +22,6 @@ const displayCategory = (value) => !value || invalidCategory(value) ? 'Needs cat
 const anchorId = (value) => `bill-${String(value ?? '').replace(/[^a-zA-Z0-9_-]/g, '-')}`;
 function monthName(value) { return new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', month: 'long', year: 'numeric' }).format(new Date(`${value}-01T00:00:00Z`)); }
 function monthOptions(selectedMonth) { const cursor = new Date('2026-04-01T00:00:00Z'); const end = new Date(); end.setUTCMonth(Math.max(end.getUTCMonth() + 6, 11)); const options = []; while (cursor <= end || cursor.toISOString().slice(0, 7) <= selectedMonth) { const value = cursor.toISOString().slice(0, 7); options.push({ value, label: monthName(value) }); cursor.setUTCMonth(cursor.getUTCMonth() + 1); } return options; }
-function returnTo(month, message) {
-  revalidatePath('/');
-  revalidatePath('/dashboard');
-  const query = new URLSearchParams({ month });
-  if (message) query.set('notice', message);
-  redirect(`/?${query.toString()}`);
-}
 function getFilters(params) {
   return {
     bill: String(params?.f_bill ?? '').trim(),
@@ -65,18 +57,6 @@ function applyFilters(rows, filters) {
     && exact(bill.status, filters.status));
 }
 
-async function bulkSubmit(data) {
-  'use server';
-  const month = normalizeLedgerMonth(String(data.get('month')));
-  if (month >= today().slice(0, 7)) throw new Error('Bulk Submit is available only for previous months.');
-  const rows = await getLedgerBills({ selectedMonth: month });
-  const eligible = rows.filter((bill) => bill.occurrenceId && bill.effectiveAmount !== null && bill.remaining > 0);
-  if (eligible.length) {
-    await supabaseRequest('ledger_bill_payments', { method: 'POST', body: eligible.map((bill) => ({ bill_id: bill.id, occurrence_id: bill.occurrenceId, amount: bill.remaining, payment_month: `${month}-01`, payment_date: bill.nextDue, funding_account: bill.account, notes: 'Bulk payment submitted' })) });
-  }
-  returnTo(month, `${eligible.length} bills submitted.`);
-}
-
 export default async function BillsPage({ searchParams }) {
   const params = await searchParams;
   const selectedMonth = normalizeLedgerMonth(params?.month);
@@ -92,7 +72,7 @@ export default async function BillsPage({ searchParams }) {
   const selected = rows.find((bill) => bill.rowKey === selectedKey || bill.occurrenceId === selectedKey);
 
   return <>
-    <p className="eyebrow">Bill management</p><div className="page-heading-row"><div><h1>{monthName(selectedMonth)}</h1><p className="lede">Review active personal, streaming, and business bills from the persisted Bills Master.</p></div><div className="head-actions"><form method="get" className="month-selector"><label htmlFor="bills-month">Month</label><select id="bills-month" name="month" defaultValue={selectedMonth}>{monthOptions(selectedMonth).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select><button type="submit">View</button></form><Link className="button" href={`/?month=${selectedMonth}${filterSuffix}&add=1#add-bill`}>Add Bill</Link>{selectedMonth < today().slice(0, 7) && <form action={bulkSubmit}><input type="hidden" name="month" value={selectedMonth}/><ConfirmButton message={`Submit all eligible bills for ${monthName(selectedMonth)}?`}>Bulk Submit</ConfirmButton></form>}</div></div>
+    <p className="eyebrow">Bill management</p><div className="page-heading-row"><div><h1>{monthName(selectedMonth)}</h1><p className="lede">Review active personal, streaming, and business bills from the persisted Bills Master.</p></div><div className="head-actions"><BillsMonthSelector selectedMonth={selectedMonth} options={monthOptions(selectedMonth)}/><Link className="button" href={`/?month=${selectedMonth}${filterSuffix}&add=1#add-bill`}>Add Bill</Link>{selectedMonth < today().slice(0, 7) && <form action={bulkSubmitAction}><input type="hidden" name="month" value={selectedMonth}/><ConfirmButton message={`Submit all eligible bills for ${monthName(selectedMonth)}?`}>Bulk Submit</ConfirmButton></form>}</div></div>
     {params?.notice && <p className="success" role="status">{params.notice}</p>}{loadError && <p className="alert" role="alert">Bills could not be loaded: {loadError}</p>}
     {params?.add === '1' && <section className="panel add-bill-panel" id="add-bill"><header><strong>Add Bill</strong><Link href={`/?month=${selectedMonth}${filterSuffix}`}>Cancel</Link></header><form action={addBillAction} className="add-bill-form"><input type="hidden" name="month" value={selectedMonth}/><label>Bill Name<input name="name" required/></label><label>Type<select name="type" defaultValue="Personal"><option>Personal</option><option>Streaming</option><option>Business</option></select></label><label>Category<input name="category" required placeholder="e.g. Utilities"/></label><label>Account<input name="account" required placeholder="TCU / TCUB / other"/></label><label>Budget Amount<input name="budget" type="number" min="0" step="0.01"/></label><label>Actual Bill Amount<input name="actualAmount" type="number" min="0" step="0.01"/></label><label>Frequency<select name="frequency" defaultValue="monthly">{['monthly','bi-weekly','quarterly','annual','one-time'].map((value) => <option key={value}>{value}</option>)}</select></label><label>Next Due<input name="nextDue" type="date" required/></label><label className="add-bill-notes">Notes<input name="notes"/></label><div className="add-bill-actions"><button type="submit">Save Bill</button><Link className="button ghost" href={`/?month=${selectedMonth}${filterSuffix}`}>Cancel</Link></div></form></section>}
     <section className="summary" aria-label="Bill summary"><article><span>Total Budget</span><strong>{money.format(summary.total)}</strong><small>{summary.activeCount} active bill occurrences</small></article><article><span>Submitted</span><strong>{money.format(summary.submitted)}</strong><small>{summary.submittedCount} submitted</small></article><article><span>Partial</span><strong className="amber">{money.format(summary.partial)}</strong><small>{summary.partialCount} partial</small></article><article><span>Remaining</span><strong className="blue">{money.format(summary.remaining)}</strong><small>outstanding</small></article><article><span>Credits</span><strong>{money.format(summary.credit)}</strong><small>overpayments</small></article></section>
