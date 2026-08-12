@@ -59,6 +59,41 @@ test('category-only edit updates master metadata without rewriting occurrence', 
   assert.equal(calls.some(([name]) => name === 'createOccurrence'), false);
 });
 
+test('FedEx legacy Category Business can be corrected without rewriting unrelated fields', async () => {
+  const { repository, calls } = repositoryFixture({
+    masterOverrides: { category: 'Business', bill_type: 'Personal', account: 'TCU' },
+    occurrenceOverrides: { occurrence_budget_amount: 104.30 },
+  });
+
+  await updateBill({
+    ...baseInput,
+    category: 'Shipping',
+    budget: '104.30',
+  }, repository);
+
+  const masterUpdate = calls.find(([name]) => name === 'updateMasterBill');
+  assert.deepEqual(masterUpdate[2], { category: 'Shipping' });
+  assert.equal(calls.some(([name]) => name === 'updateOccurrence'), false);
+  assert.equal(calls.some(([name]) => name === 'createOccurrence'), false);
+});
+
+test('legacy invalid category does not block an unrelated edit when the value is unchanged', async () => {
+  const { repository, calls } = repositoryFixture({ masterOverrides: { category: 'Business' } });
+  await updateBill({ ...baseInput, category: 'Business', name: 'FedEx Ground' }, repository);
+
+  const masterUpdate = calls.find(([name]) => name === 'updateMasterBill');
+  assert.deepEqual(masterUpdate[2], { bill_name: 'FedEx Ground' });
+  assert.equal(Object.hasOwn(masterUpdate[2], 'category'), false);
+});
+
+test('a new Business or Personal category is still rejected', async () => {
+  const { repository } = repositoryFixture({ masterOverrides: { category: 'Shipping' } });
+  await assert.rejects(
+    updateBill({ ...baseInput, category: 'Business' }, repository),
+    /Business and Personal are Types, not Categories/,
+  );
+});
+
 test('budget-only edit changes occurrence and does not rewrite master fields', async () => {
   const { repository, calls } = repositoryFixture();
   await updateBill({ ...baseInput, budget: '150' }, repository);
@@ -75,6 +110,17 @@ test('actual-only edit preserves budget and updates only Actual', async () => {
 
   const occurrenceUpdate = calls.find(([name]) => name === 'updateOccurrence');
   assert.deepEqual(occurrenceUpdate[2], { actual_amount: 119.45, migration_incomplete: false });
+});
+
+test('submitted bill workflow still permits Actual to be entered without touching payment history', async () => {
+  const { repository, calls } = repositoryFixture();
+  // Payments/status are intentionally outside updateBill; editing occurrence data must
+  // remain independent from payment history even after a bill has been submitted.
+  await updateBill({ ...baseInput, actualAmount: '104.30' }, repository);
+
+  const occurrenceUpdate = calls.find(([name]) => name === 'updateOccurrence');
+  assert.deepEqual(occurrenceUpdate[2], { actual_amount: 104.30, migration_incomplete: false });
+  assert.equal(calls.some(([name]) => /Payment/.test(name)), false);
 });
 
 test('TCUB account change derives Business type through canonical rule', async () => {

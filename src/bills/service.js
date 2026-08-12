@@ -22,13 +22,21 @@ function validMonth(value) {
   return /^\d{4}-\d{2}$/.test(String(value ?? ''));
 }
 
-function validateBillIdentity({ id, month, name, account, category, dueDate, requireCategory = false }) {
+function validateBillIdentity({ id, month, name, account, category, dueDate, requireCategory = false, validateCategory = true }) {
   if (id !== undefined && !String(id).trim()) throw new Error('Bill id is required.');
   if (!validMonth(month)) throw new Error('A valid month is required.');
   if (!String(name ?? '').trim() || !String(account ?? '').trim()) throw new Error('Bill name and Account are required.');
   if (requireCategory && !String(category ?? '').trim()) throw new Error('Category is required.');
-  if (category && invalidBillCategory(category)) throw new Error('Business and Personal are Types, not Categories. Choose a bill category.');
+  if (validateCategory && category && invalidBillCategory(category)) throw new Error('Business and Personal are Types, not Categories. Choose a bill category.');
   if (!validDate(dueDate)) throw new Error('A valid Next Due date is required.');
+}
+
+function validateUpdatedCategory(category, currentCategory) {
+  if (!category || !invalidBillCategory(category)) return;
+  const normalizedIncoming = String(category).trim().toLowerCase();
+  const normalizedCurrent = String(currentCategory ?? '').trim().toLowerCase();
+  if (normalizedIncoming === normalizedCurrent && invalidBillCategory(currentCategory)) return;
+  throw new Error('Business and Personal are Types, not Categories. Choose a bill category.');
 }
 
 function validateBillType(account, requestedType) {
@@ -94,10 +102,14 @@ export async function updateBill(input, repository = billsRepository) {
   const budget = numberOrNull(input.budget, 'Budget Amount');
   const actualAmount = numberOrNull(input.actualAmount, 'Actual Bill Amount');
 
-  validateBillIdentity({ id, month, name, account, category, dueDate });
+  // Existing records can contain legacy Category values of Business/Personal.
+  // Resolve the current master before category validation so an unrelated edit is
+  // not blocked merely because that legacy value already exists.
+  validateBillIdentity({ id, month, name, account, category, dueDate, validateCategory: false });
 
   const master = await repository.getMasterBill(id);
   if (!master) throw new Error('The selected bill was not found. Refresh and try again.');
+  validateUpdatedCategory(category, master.category);
 
   const billType = validateBillType(account, requestedType);
   const masterPatch = {};
