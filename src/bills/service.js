@@ -175,6 +175,26 @@ export async function recordPayment(input, repository = billsRepository) {
   return { billId, occurrenceId: occurrence.id, paymentId: payment?.id ?? null };
 }
 
+export async function recordBulkPayments(input, repository = billsRepository) {
+  const month = String(input.month ?? '').trim();
+  const currentMonth = String(input.currentMonth ?? '').trim();
+  if (!validMonth(month) || !validMonth(currentMonth)) throw new Error('A valid month is required.');
+  if (month >= currentMonth) throw new Error('Bulk Submit is available only for previous months.');
+
+  const eligible = (input.bills ?? []).filter((bill) => bill.occurrenceId && bill.effectiveAmount !== null && bill.remaining > 0);
+  const payloads = eligible.map((bill) => ({
+    bill_id: bill.id,
+    occurrence_id: bill.occurrenceId,
+    amount: bill.remaining,
+    payment_month: `${month}-01`,
+    payment_date: bill.nextDue,
+    funding_account: bill.account,
+    notes: 'Bulk payment submitted',
+  }));
+  await repository.addPayments(payloads);
+  return { count: payloads.length };
+}
+
 export async function changePayment(input, repository = billsRepository) {
   const billId = String(input.id ?? '').trim();
   const occurrenceId = String(input.occurrenceId ?? '').trim();
