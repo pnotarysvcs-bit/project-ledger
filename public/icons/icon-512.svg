@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-label="Project Ledger">
+  <rect width="512" height="512" rx="112" fill="#080909"/>
+  <rect x="106" y="90" width="300" height="332" rx="42" fill="#171818" stroke="#00bd8c" stroke-width="22"/>
+  <path d="M170 188h172M170 256h112M170 324h82" stroke="#f4f7f7" stroke-width="28" stroke-linecap="round"/>
+  <path d="m286 319 32 32 66-82" fill="none" stroke="#00d6a3" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
