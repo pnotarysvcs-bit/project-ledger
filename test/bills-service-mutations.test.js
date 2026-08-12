@@ -5,6 +5,7 @@ import {
   changePayment,
   createBill,
   deletePayment,
+  recordBulkPayments,
   recordPayment,
   updateBill,
 } from '../src/bills/service.js';
@@ -39,6 +40,10 @@ function fakeRepository(overrides = {}) {
     async addPayment(payload) {
       calls.push(['addPayment', payload]);
       return { id: 'pay-new' };
+    },
+    async addPayments(payloads) {
+      calls.push(['addPayments', payloads]);
+      return payloads.map((_, index) => ({ id: `pay-bulk-${index + 1}` }));
     },
     async updatePayment(key, patch) { calls.push(['updatePayment', key, patch]); },
     async removePayment(key) { calls.push(['removePayment', key]); },
@@ -99,6 +104,36 @@ test('record payment resolves occurrence then persists one payment', async () =>
   }, repository);
   assert.deepEqual(result, { billId: 'bill-1', occurrenceId: 'occ-1', paymentId: 'pay-new' });
   assert.equal(repository.calls.find(([name]) => name === 'addPayment')[1].amount, 40);
+});
+
+test('bulk submit persists only eligible previous-month balances through repository boundary', async () => {
+  const repository = fakeRepository();
+  const result = await recordBulkPayments({
+    month: '2026-07',
+    currentMonth: '2026-08',
+    bills: [
+      { id: 'a', occurrenceId: 'occ-a', effectiveAmount: 100, remaining: 25, nextDue: '2026-07-10', account: 'TCU' },
+      { id: 'b', occurrenceId: 'occ-b', effectiveAmount: 50, remaining: 0, nextDue: '2026-07-12', account: 'TCU' },
+      { id: 'c', occurrenceId: null, effectiveAmount: 75, remaining: 75, nextDue: '2026-07-15', account: 'TCUB' },
+    ],
+  }, repository);
+
+  assert.deepEqual(result, { count: 1 });
+  const payloads = repository.calls.find(([name]) => name === 'addPayments')[1];
+  assert.equal(payloads.length, 1);
+  assert.deepEqual(payloads[0], {
+    bill_id: 'a', occurrence_id: 'occ-a', amount: 25, payment_month: '2026-07-01',
+    payment_date: '2026-07-10', funding_account: 'TCU', notes: 'Bulk payment submitted',
+  });
+});
+
+test('bulk submit rejects the current or a future month', async () => {
+  const repository = fakeRepository();
+  await assert.rejects(
+    recordBulkPayments({ month: '2026-08', currentMonth: '2026-08', bills: [] }, repository),
+    /previous months/,
+  );
+  assert.equal(repository.calls.some(([name]) => name === 'addPayments'), false);
 });
 
 test('payment update and removal remain occurrence-scoped', async () => {
