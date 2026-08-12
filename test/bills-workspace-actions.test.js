@@ -2,29 +2,50 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-const source = await readFile(new URL('../app/page.js', import.meta.url), 'utf8');
+const pageSource = await readFile(new URL('../app/page.js', import.meta.url), 'utf8');
+const actionSource = await readFile(new URL('../app/bills-actions.js', import.meta.url), 'utf8');
+const serviceSource = await readFile(new URL('../src/bills/service.js', import.meta.url), 'utf8');
+const monthSelectorSource = await readFile(new URL('../app/bills-month-selector.js', import.meta.url), 'utf8');
 
-test('Bills workspace renders an Add Bill action and persisted add workflow', () => {
-  assert.match(source, />Add Bill<\/Link>/);
-  assert.match(source, /async function addBill\(data\)/);
-  assert.match(source, /ledger_bills\?select=id/);
-  assert.match(source, /ledger_bill_months/);
+test('Bills workspace binds all mutations to the canonical action boundary', () => {
+  assert.match(pageSource, />Add Bill<\/Link>/);
+  assert.match(pageSource, /action=\{addBillAction\}/);
+  assert.match(pageSource, /action=\{editBillAction\}/);
+  assert.match(pageSource, /action=\{addPaymentAction\}/);
+  assert.match(pageSource, /action=\{submitBillAction\}/);
+  assert.match(pageSource, /action=\{bulkSubmitAction\}/);
+  assert.match(pageSource, /action=\{archiveBillAction\}/);
+  assert.match(pageSource, /formAction=\{removePaymentAction\}/);
 });
 
-test('Edit remains available when occurrenceId is missing', () => {
-  assert.match(source, /<Link className="button ghost" href=\{`\/\?month=\$\{selectedMonth\}.*&edit=/s);
-  assert.doesNotMatch(source, /className=\{`button ghost \$\{!bill\.occurrenceId \? 'disabled'/);
-  assert.doesNotMatch(source, /if \(!id \|\| !occurrenceId\) throw new Error\('Bill occurrence is required\.'\)/);
+test('Bills page no longer owns direct persistence mutation logic', () => {
+  assert.doesNotMatch(pageSource, /supabaseRequest/);
+  assert.doesNotMatch(pageSource, /ledger_bills\?select=id/);
+  assert.doesNotMatch(pageSource, /ledger_bill_months\?select=id/);
+  assert.doesNotMatch(pageSource, /ledger_bill_payments/);
+  assert.doesNotMatch(pageSource, /async function addBill\(data\)/);
+  assert.doesNotMatch(pageSource, /async function editBill\(data\)/);
+  assert.doesNotMatch(pageSource, /async function bulkSubmit\(data\)/);
 });
 
-test('Edit materializes a missing occurrence before saving', () => {
-  assert.match(source, /if \(!occurrenceId\) \{/);
-  assert.match(source, /method: 'POST'/);
-  assert.match(source, /Bill occurrence creation was not confirmed by the database/);
+test('Edit remains available when occurrenceId is missing and the service materializes the occurrence', () => {
+  assert.match(pageSource, /<Link className="button ghost" href=\{`\/\?month=\$\{selectedMonth\}.*&edit=/s);
+  assert.doesNotMatch(pageSource, /className=\{`button ghost \$\{!bill\.occurrenceId \? 'disabled'/);
+  assert.match(actionSource, /await updateBill\(/);
+  assert.match(serviceSource, /if \(!occurrence\) \{/);
+  assert.match(serviceSource, /await repository\.createOccurrence\(/);
+  assert.match(serviceSource, /Bill occurrence creation was not confirmed by the database/);
+});
+
+test('month selection changes immediately without a View button', () => {
+  assert.match(pageSource, /<BillsMonthSelector selectedMonth=\{selectedMonth\}/);
+  assert.doesNotMatch(pageSource, />View<\/button>/);
+  assert.match(monthSelectorSource, /onChange=\{changeMonth\}/);
+  assert.match(monthSelectorSource, /router\.push\(`/);
 });
 
 test('Type, Account, and Status filters use exact matching', () => {
-  assert.match(source, /exact\(bill\.type, filters\.type\)/);
-  assert.match(source, /exact\(bill\.account, filters\.account\)/);
-  assert.match(source, /exact\(bill\.status, filters\.status\)/);
+  assert.match(pageSource, /exact\(bill\.type, filters\.type\)/);
+  assert.match(pageSource, /exact\(bill\.account, filters\.account\)/);
+  assert.match(pageSource, /exact\(bill\.status, filters\.status\)/);
 });
