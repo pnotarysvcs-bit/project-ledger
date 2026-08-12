@@ -24,6 +24,8 @@ export default function AccountsPage() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [errors, setErrors] = useState({});
   const [loaded, setLoaded] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState(EMPTY_FORM);
 
   useEffect(() => {
     let cancelled = false;
@@ -69,6 +71,11 @@ export default function AccountsPage() {
     setErrors((current) => ({ ...current, [field]: undefined, form: undefined }));
   };
 
+  const updateEdit = (field) => (event) => {
+    setEditForm((current) => ({ ...current, [field]: event.target.value }));
+    setErrors((current) => ({ ...current, edit: undefined, form: undefined }));
+  };
+
   const handleSubmit = async (event) => {
     event.preventDefault();
 
@@ -92,6 +99,42 @@ export default function AccountsPage() {
     }
   };
 
+  const beginEdit = (account) => {
+    setEditingId(account.id);
+    setEditForm({ institution: account.institution, kind: account.kind });
+    setErrors({});
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditForm(EMPTY_FORM);
+    setErrors({});
+  };
+
+  const handleEdit = async (event, account) => {
+    event.preventDefault();
+    const candidate = { ...editForm, id: account.id };
+    const result = validateAccount(candidate, accounts);
+    if (!result.valid) {
+      setErrors({ edit: result.errors.institution ?? result.errors.kind ?? 'Review the account details.' });
+      return;
+    }
+
+    try {
+      const data = await readJson(await fetch('/api/accounts', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(candidate),
+      }));
+      setAccounts((current) => current.map((item) => item.id === account.id ? data.account : item));
+      setEditingId(null);
+      setEditForm(EMPTY_FORM);
+      setErrors({});
+    } catch (error) {
+      setErrors({ edit: error.message });
+    }
+  };
+
   const handleRemove = async (id) => {
     try {
       await readJson(await fetch('/api/accounts', {
@@ -100,6 +143,7 @@ export default function AccountsPage() {
         body: JSON.stringify({ id }),
       }));
       setAccounts((current) => current.filter((account) => account.id !== id));
+      if (editingId === id) cancelEdit();
     } catch (error) {
       setErrors({ form: error.message });
     }
@@ -148,19 +192,23 @@ export default function AccountsPage() {
 
       <section className="panel">
         <header><strong>Saved accounts <small>{summary.total}</small></strong></header>
+        {errors.edit && <p className="error account-edit-error" role="alert">{errors.edit}</p>}
         <div className="table-wrap">
           <table className="accounts-table">
             <thead><tr><th>Bank</th><th>Account Type</th><th>Actions</th></tr></thead>
             <tbody>
               {!loaded && <tr><td colSpan={3} className="empty">Loading accounts…</td></tr>}
               {loaded && accounts.length === 0 && <tr><td colSpan={3} className="empty">No accounts yet. Add one above.</td></tr>}
-              {sortAccounts(accounts).map((account) => (
-                <tr key={account.id}>
-                  <td><b>{account.institution}</b></td>
-                  <td><span className={`status ${account.kind}`}>{labelForKind(account.kind)}</span></td>
-                  <td><button type="button" className="ghost" onClick={() => handleRemove(account.id)} aria-label={`Remove ${account.institution} ${labelForKind(account.kind)} account`}>Remove</button></td>
-                </tr>
-              ))}
+              {sortAccounts(accounts).map((account) => {
+                const editing = editingId === account.id;
+                return (
+                  <tr key={account.id} className={editing ? 'account-editing-row' : undefined}>
+                    <td>{editing ? <input aria-label="Bank name" value={editForm.institution} onChange={updateEdit('institution')} /> : <b>{account.institution}</b>}</td>
+                    <td>{editing ? <select aria-label="Account type" value={editForm.kind} onChange={updateEdit('kind')}>{ACCOUNT_KINDS.map((kind) => <option key={kind} value={kind}>{labelForKind(kind)}</option>)}</select> : <span className={`status ${account.kind}`}>{labelForKind(account.kind)}</span>}</td>
+                    <td>{editing ? <form className="account-row-actions" onSubmit={(event) => handleEdit(event, account)}><button type="submit">Save</button><button type="button" className="ghost" onClick={cancelEdit}>Cancel</button></form> : <div className="account-row-actions"><button type="button" className="ghost" onClick={() => beginEdit(account)}>Edit</button><button type="button" className="ghost danger" onClick={() => handleRemove(account.id)} aria-label={`Remove ${account.institution} ${labelForKind(account.kind)} account`}>Remove</button></div>}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
