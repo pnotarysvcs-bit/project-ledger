@@ -118,3 +118,9 @@ export function effectiveStatementMonth(detection, override) {
   if (override && !/^\d{4}-\d{2}$/.test(override)) throw new Error('Statement month override must use YYYY-MM.');
   return override || detection.detectedMonth;
 }
+
+export function statementWarningRequired(detection, override) {
+  const detectedMonth = detection?.detectedMonth ?? null;
+  const overrideDiffers = Boolean(override && detectedMonth && override !== detectedMonth);
+  return Boolean(detection?.spansMonths || overrideDiffers);
+}
