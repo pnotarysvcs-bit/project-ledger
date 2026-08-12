@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache';
 import pdf from 'pdf-parse/lib/pdf-parse.js';
 import { getLedgerBills, normalizeLedgerMonth } from '../../src/ledger-bills-data.js';
 import { supabaseRequest } from '../../src/supabase-server.js';
-import { detectStatementPeriod, effectiveStatementMonth, extractTransactions, reconcileTransactions, statementHash } from '../../src/statement-reconciliation.js';
+import { detectStatementPeriod, effectiveStatementMonth, extractTransactions, planStatementPayments, reconcileTransactions, statementHash } from '../../src/statement-reconciliation.js';
 
 export const dynamic = 'force-dynamic';
 const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
@@ -65,12 +65,63 @@ async function completeReconciliation(formData) {
   const rows = await supabaseRequest(`ledger_statement_transactions?select=*&import_id=eq.${encodeURIComponent(importId)}`);
   const unresolved = rows.filter((row) => ['NEW', 'Unmatched'].includes(row.match_status));
   if (unresolved.length) throw new Error('Dismiss or resolve all NEW and Unmatched items before completing reconciliation.');
-  for (const row of rows.filter((value) => ['Matched', 'Amount Variance'].includes(value.match_status) && !value.payment_id)) {
-    if (!row.bill_id || !row.occurrence_id) continue;
-    const payment = await supabaseRequest('ledger_bill_payments?select=id', { method: 'POST', headers: { Prefer: 'return=representation' }, body: { bill_id: row.bill_id, occurrence_id: row.occurrence_id, amount: row.amount, payment_month: item.effective_month, payment_date: row.transaction_date, funding_account: 'Statement import', notes: `Statement reconciliation ${importId}` } });
-    await supabaseRequest(`ledger_statement_transactions?id=eq.${row.id}`, { method: 'PATCH', body: { payment_id: payment?.[0]?.id, resolved_at: new Date().toISOString(), decision_note: row.match_status === 'Amount Variance' ? 'Payment imported; Actual Bill Amount preserved.' : row.decision_note } });
+
+  const existingPayments = await supabaseRequest(`ledger_bill_payments?select=id,bill_id,occurrence_id,amount,payment_date,payment_month&payment_month=eq.${item.effective_month}`);
+  const actions = planStatementPayments(rows, existingPayments);
+  const resolvedAt = new Date().toISOString();
+
+  for (const { row, action, paymentId } of actions) {
+    if (action === 'link-existing') {
+      await supabaseRequest(`ledger_statement_transactions?id=eq.${encodeURIComponent(row.id)}&import_id=eq.${encodeURIComponent(importId)}`, {
+        method: 'PATCH',
+        body: {
+          payment_id: paymentId,
+          resolved_at: resolvedAt,
+          decision_note: row.match_status === 'Amount Variance'
+            ? 'Matched to an existing payment; no duplicate created. Actual Bill Amount preserved.'
+            : 'Matched to an existing payment; no duplicate created.',
+        },
+      });
+      continue;
+    }
+
+    if (action === 'covered-by-existing') {
+      await supabaseRequest(`ledger_statement_transactions?id=eq.${encodeURIComponent(row.id)}&import_id=eq.${encodeURIComponent(importId)}`, {
+        method: 'PATCH',
+        body: {
+          resolved_at: resolvedAt,
+          decision_note: row.match_status === 'Amount Variance'
+            ? 'Already represented by existing payment history; no duplicate created. Actual Bill Amount preserved.'
+            : 'Already represented by existing payment history; no duplicate created.',
+        },
+      });
+      continue;
+    }
+
+    const payment = await supabaseRequest('ledger_bill_payments?select=id', {
+      method: 'POST',
+      headers: { Prefer: 'return=representation' },
+      body: {
+        bill_id: row.bill_id,
+        occurrence_id: row.occurrence_id,
+        amount: row.amount,
+        payment_month: item.effective_month,
+        payment_date: row.transaction_date,
+        funding_account: 'Statement import',
+        notes: `Statement reconciliation ${importId}`,
+      },
+    });
+    await supabaseRequest(`ledger_statement_transactions?id=eq.${encodeURIComponent(row.id)}&import_id=eq.${encodeURIComponent(importId)}`, {
+      method: 'PATCH',
+      body: {
+        payment_id: payment?.[0]?.id,
+        resolved_at: resolvedAt,
+        decision_note: row.match_status === 'Amount Variance' ? 'Payment imported; Actual Bill Amount preserved.' : row.decision_note,
+      },
+    });
   }
-  await supabaseRequest(`ledger_statement_imports?id=eq.${encodeURIComponent(importId)}`, { method: 'PATCH', body: { status: 'completed', completed_at: new Date().toISOString() } });
+
+  await supabaseRequest(`ledger_statement_imports?id=eq.${encodeURIComponent(importId)}`, { method: 'PATCH', body: { status: 'completed', completed_at: resolvedAt } });
   revalidatePath('/'); revalidatePath('/dashboard'); redirect(`/?month=${item.effective_month.slice(0, 7)}&notice=Statement+reconciliation+completed.`);
 }
 
