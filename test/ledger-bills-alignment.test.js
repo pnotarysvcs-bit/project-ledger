@@ -2,12 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { biweeklyDueDates, buildLedgerRows, classifyLedgerBill, summarizeLedgerBills } from '../src/ledger-bills-data.js';
 
-test('status precedence is submitted then overdue then partial then future', () => {
+test('status precedence is submitted then overdue then partial then blank upcoming', () => {
   const asOf = new Date('2026-08-08T12:00:00Z');
   assert.equal(classifyLedgerBill({ effectiveAmount: 100, submitted: 100, dueDate: '2026-08-01' }, asOf), 'submitted');
   assert.equal(classifyLedgerBill({ effectiveAmount: 100, submitted: 20, dueDate: '2026-08-01' }, asOf), 'overdue');
   assert.equal(classifyLedgerBill({ effectiveAmount: 100, submitted: 20, dueDate: '2026-08-20' }, asOf), 'partial');
-  assert.equal(classifyLedgerBill({ effectiveAmount: 100, submitted: 0, dueDate: '2026-08-20' }, asOf), 'future');
+  assert.equal(classifyLedgerBill({ effectiveAmount: 100, submitted: 0, dueDate: '2026-08-20' }, asOf), '');
 });
 
 test('past-due overpayment is submitted with credit and never overdue', () => {
@@ -106,7 +106,7 @@ test('bi-weekly installments keep payments, remaining, and status independent by
   assert.deepEqual(rows.map((row) => row.occurrenceId), ['o1', 'o2', 'o3']);
   assert.deepEqual(rows.map((row) => row.submitted), [100, 25, 0]);
   assert.deepEqual(rows.map((row) => row.remaining), [0, 75, 100]);
-  assert.deepEqual(rows.map((row) => row.status), ['submitted', 'partial', 'future']);
+  assert.deepEqual(rows.map((row) => row.status), ['submitted', 'partial', '']);
   const summary = summarizeLedgerBills(rows, new Date('2026-08-08T12:00:00Z'));
   assert.equal(summary.total, 300);
   assert.equal(summary.totalPaid, 125);
