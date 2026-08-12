@@ -2,7 +2,7 @@
 
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
-import { normalizeLedgerMonth } from '../src/ledger-bills-data.js';
+import { getLedgerBills, normalizeLedgerMonth } from '../src/ledger-bills-data.js';
 import {
   archiveBill,
   changePayment,
@@ -85,6 +85,26 @@ export async function addPaymentAction(data) {
     notes: value(data, 'notes'),
   });
   redirectToBills({ ...common, message: 'Payment recorded.' });
+}
+
+export async function submitBillAction(data) {
+  const common = commonInput(data);
+  const dueDate = value(data, 'dueDate');
+  const rows = await getLedgerBills({ selectedMonth: common.month });
+  const bill = rows.find((row) => row.id === common.id
+    && (row.occurrenceId === common.occurrenceId || (!common.occurrenceId && row.nextDue === dueDate)));
+  if (!bill || bill.effectiveAmount === null || bill.remaining <= 0) {
+    throw new Error('This bill is already submitted or has no amount.');
+  }
+  await recordPayment({
+    ...common,
+    dueDate,
+    amount: bill.remaining,
+    paymentDate: new Date().toISOString().slice(0, 10),
+    fundingAccount: bill.account,
+    notes: 'Full payment submitted',
+  });
+  redirectToBills({ ...common, message: 'Bill submitted.' });
 }
 
 export async function updatePaymentAction(data) {
