@@ -4,7 +4,8 @@ import { readFile } from 'node:fs/promises';
 
 const APP_PATH = new URL('../app/reconcile/page.js', import.meta.url);
 const MIGRATION_PATH = new URL('../supabase/migrations/202608111200_create_statement_reconciliation.sql', import.meta.url);
-const ALIGNMENT_PATH = new URL('../supabase/migrations/202608120315_align_statement_reconciliation_schema.sql', import.meta.url);
+const ALIGNMENT_PATH = new URL('../supabase/migrations/202608120310_align_statement_reconciliation_schema.sql', import.meta.url);
+const LEGACY_RELEASE_PATH = new URL('../supabase/migrations/202608120325_drop_legacy_statement_not_nulls.sql', import.meta.url);
 
 async function source(path) {
   return readFile(path, 'utf8');
@@ -14,7 +15,8 @@ test('statement upload queries only columns guaranteed by the reconciled schema'
   const app = await source(APP_PATH);
   const migration = await source(MIGRATION_PATH);
   const alignment = await source(ALIGNMENT_PATH);
-  const schema = `${migration}\n${alignment}`;
+  const legacyRelease = await source(LEGACY_RELEASE_PATH);
+  const schema = `${migration}\n${alignment}\n${legacyRelease}`;
 
   const importColumns = [
     'source_name', 'source_hash', 'period_start', 'period_end',
@@ -38,6 +40,13 @@ test('statement upload queries only columns guaranteed by the reconciled schema'
   assert.doesNotMatch(app, /confirmed_month/, 'legacy confirmed_month must not return to server action');
   assert.doesNotMatch(app, /transaction_key/, 'legacy transaction_key must not return to server action');
   assert.doesNotMatch(app, /matched_bill_id|matched_occurrence_id/, 'legacy match columns must not return');
+});
+
+test('legacy statement columns cannot block canonical uploads', async () => {
+  const legacyRelease = await source(LEGACY_RELEASE_PATH);
+  assert.match(legacyRelease, /statement_hash drop not null/);
+  assert.match(legacyRelease, /file_name drop not null/);
+  assert.match(legacyRelease, /transaction_key drop not null/);
 });
 
 test('statement status values used by the server action are accepted by the canonical schema', async () => {
