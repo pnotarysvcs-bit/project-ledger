@@ -1,4 +1,10 @@
 import { supabaseRequest } from './supabase-server.js';
+import {
+  calculateOccurrenceAmounts,
+  classifyBillStatus,
+  groupBillsByType,
+  sortBillOccurrences,
+} from './bills/domain.js';
 
 const DAY = 86400000;
 
@@ -51,9 +57,7 @@ export function biweeklyDueDates(anchorValue, selectedMonth) {
 }
 
 function dueDatesForBill(bill, selectedMonth) {
-  if (bill.frequency === 'bi-weekly') {
-    return biweeklyDueDates(bill.recurrence_anchor, selectedMonth);
-  }
+  if (bill.frequency === 'bi-weekly') return biweeklyDueDates(bill.recurrence_anchor, selectedMonth);
   return [dueDateForMonth(monthDate(selectedMonth), bill.due_day)];
 }
 
@@ -63,13 +67,8 @@ function activeInMonth(bill, selected) {
   return new Date(bill.archived_at) >= new Date(Date.UTC(selected.getUTCFullYear(), selected.getUTCMonth() + 1, 1));
 }
 
-/** Single precedence shared by Bills and Dashboard: Incomplete → Submitted → Overdue → Partial → Future. */
-export function classifyLedgerBill({ effectiveAmount, submitted, dueDate }, asOf = new Date()) {
-  if (effectiveAmount === null) return 'incomplete';
-  if (submitted >= effectiveAmount) return 'submitted';
-  if (new Date(`${dueDate}T23:59:59Z`) < asOf) return 'overdue';
-  if (submitted > 0) return 'partial';
-  return 'future';
+export function classifyLedgerBill(input, asOf = new Date()) {
+  return classifyBillStatus(input, asOf);
 }
 
 function expectedBills(bills, selectedMonth) {
@@ -77,10 +76,6 @@ function expectedBills(bills, selectedMonth) {
   return bills.filter((bill) => activeInMonth(bill, selected) && appliesToMonth(bill, selected));
 }
 
-/**
- * Materialize current/future occurrences from durable recurrence data.
- * Historical months are never auto-created from today's master values.
- */
 export async function ensureLedgerOccurrencesForMonth(selectedMonth) {
   const normalized = normalizeLedgerMonth(selectedMonth);
   const currentMonth = normalizeLedgerMonth();
@@ -112,21 +107,20 @@ export async function ensureLedgerOccurrencesForMonth(selectedMonth) {
     }
   }
 
-  if (creates.length) {
-    await supabaseRequest('ledger_bill_months', { method: 'POST', body: creates });
-  }
+  if (creates.length) await supabaseRequest('ledger_bill_months', { method: 'POST', body: creates });
 }
 
 export function buildLedgerRows(bills, occurrences, payments, { selectedMonth, asOf = new Date() } = {}) {
   const normalized = normalizeLedgerMonth(selectedMonth);
-  const selected = monthDate(normalized);
   const occurrencesByBill = new Map();
   for (const occurrence of occurrences) {
     const list = occurrencesByBill.get(occurrence.bill_id) ?? [];
     list.push(occurrence);
     occurrencesByBill.set(occurrence.bill_id, list);
   }
-  for (const list of occurrencesByBill.values()) list.sort((a, b) => String(a.due_date).localeCompare(String(b.due_date)));
+  for (const list of occurrencesByBill.values()) {
+    list.sort((a, b) => String(a.due_date ?? '').localeCompare(String(b.due_date ?? '')));
+  }
 
   const paymentsByOccurrence = new Map();
   const legacyPaymentsByBill = new Map();
@@ -152,11 +146,10 @@ export function buildLedgerRows(bills, occurrences, payments, { selectedMonth, a
 
   const rows = [];
   for (const bill of expectedBills(bills, normalized)) {
-    const masterBudget = bill.budget === null ? null : Number(bill.budget);
+    const masterBudget = bill.budget === null || bill.budget === undefined ? null : Number(bill.budget);
     const persisted = occurrencesByBill.get(bill.id) ?? [];
     const expectedDates = dueDatesForBill(bill, normalized);
     const occurrenceMap = new Map(persisted.filter((row) => row.due_date).map((row) => [row.due_date, row]));
-
     const dates = bill.frequency === 'bi-weekly'
       ? [...new Set([...expectedDates, ...persisted.map((row) => row.due_date).filter(Boolean)])].sort()
       : [persisted[0]?.due_date || expectedDates[0]];
@@ -173,11 +166,10 @@ export function buildLedgerRows(bills, occurrences, payments, { selectedMonth, a
       const actualAmount = occurrence?.actual_amount === null || occurrence?.actual_amount === undefined
         ? null
         : Number(occurrence.actual_amount);
-      const effectiveAmount = actualAmount ?? occurrenceBudget;
       const occurrencePayments = occurrence ? (paymentsByOccurrence.get(occurrence.id) ?? []) : [];
       const legacyPayments = bill.frequency === 'bi-weekly' ? [] : (legacyPaymentsByBill.get(bill.id) ?? []);
       const transactions = [...occurrencePayments, ...legacyPayments].sort((a, b) => a.paymentDate.localeCompare(b.paymentDate));
-      const submitted = transactions.reduce((sum, payment) => sum + payment.amount, 0);
+      const amounts = calculateOccurrenceAmounts({ budget: occurrenceBudget, actualAmount, payments: transactions });
       const nextDue = occurrence?.due_date || dueDate;
 
       rows.push({
@@ -192,7 +184,7 @@ export function buildLedgerRows(bills, occurrences, payments, { selectedMonth, a
         masterBudget,
         budget: occurrenceBudget,
         actualAmount,
-        effectiveAmount,
+        effectiveAmount: amounts.effectiveAmount,
         migrationIncomplete: migrationIncomplete || (bill.frequency === 'bi-weekly' && (legacyPaymentsByBill.get(bill.id)?.length ?? 0) > 0),
         frequency: bill.frequency,
         recurrenceAnchor: bill.recurrence_anchor,
@@ -200,16 +192,20 @@ export function buildLedgerRows(bills, occurrences, payments, { selectedMonth, a
         dueDay: bill.due_day,
         startMonth: bill.start_month,
         notes: bill.notes,
-        submitted,
-        remaining: effectiveAmount === null ? null : Math.max(effectiveAmount - submitted, 0),
-        credit: effectiveAmount === null ? 0 : Math.max(submitted - effectiveAmount, 0),
+        submitted: amounts.submitted,
+        remaining: amounts.remaining,
+        credit: amounts.credit,
         transactions,
-        status: classifyLedgerBill({ effectiveAmount, submitted, dueDate: nextDue }, asOf),
+        status: classifyBillStatus({
+          effectiveAmount: amounts.effectiveAmount,
+          submitted: amounts.submitted,
+          dueDate: nextDue,
+        }, asOf),
       });
     }
   }
 
-  return rows.sort((a, b) => a.payee.localeCompare(b.payee) || a.nextDue.localeCompare(b.nextDue));
+  return sortBillOccurrences(rows);
 }
 
 export async function getLedgerBills({ selectedMonth, asOf = new Date() } = {}) {
@@ -226,7 +222,6 @@ export async function getLedgerBills({ selectedMonth, asOf = new Date() } = {}) 
 
 export function summarizeLedgerBills(rows, asOf = new Date()) {
   const today = new Date(`${asOf.toISOString().slice(0, 10)}T00:00:00Z`);
-
   return rows.reduce((summary, bill) => {
     const effectiveAmount = bill.effectiveAmount ?? 0;
     const submitted = bill.submitted ?? 0;
@@ -236,7 +231,6 @@ export function summarizeLedgerBills(rows, asOf = new Date()) {
     summary.totalPaid += submitted;
     summary.activeCount += 1;
     summary.credit += bill.credit ?? 0;
-
     if (bill.effectiveAmount === null) summary.incompleteCount += 1;
     if (bill.migrationIncomplete) summary.dataQualityCount += 1;
 
@@ -251,7 +245,6 @@ export function summarizeLedgerBills(rows, asOf = new Date()) {
       summary.partial += submitted;
       summary.partialCount += 1;
     }
-
     if (bill.status === 'overdue') {
       summary.overdue += bill.remaining ?? 0;
       summary.overdueCount += 1;
@@ -263,7 +256,6 @@ export function summarizeLedgerBills(rows, asOf = new Date()) {
       summary.dueSoon += bill.remaining;
       summary.dueSoonCount += 1;
     }
-
     return summary;
   }, {
     total: 0,
@@ -288,8 +280,7 @@ export function getLedgerOverview(rows) {
   const definitions = [
     ['submitted', 'Submitted', (bill) => bill.effectiveAmount ?? 0],
     ['overdue', 'Overdue', (bill) => bill.remaining ?? 0],
-    ['partial', 'Partial', (bill) => bill.submitted],
-    ['future', 'Future', (bill) => bill.remaining ?? 0],
+    ['partial', 'Partial', (bill) => bill.submitted ?? 0],
   ];
 
   return definitions.map(([key, label, amount]) => {
@@ -304,9 +295,5 @@ export function getLedgerOverview(rows) {
 }
 
 export function groupLedgerBills(rows) {
-  return [...rows.reduce((groups, bill) => {
-    if (!groups.has(bill.type)) groups.set(bill.type, []);
-    groups.get(bill.type).push(bill);
-    return groups;
-  }, new Map()).entries()].map(([type, bills]) => ({ type, bills }));
+  return groupBillsByType(rows);
 }
