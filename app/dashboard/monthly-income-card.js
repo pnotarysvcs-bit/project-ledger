@@ -19,9 +19,10 @@ async function saveIncome(data) {
   redirect(`/dashboard?month=${month}&incomeSaved=1`);
 }
 
-export default async function MonthlyIncomeCard({ selectedMonth }) {
+export default async function MonthlyIncomeCard({ selectedMonth, searchParams }) {
   const income = await getMonthlyIncome(selectedMonth);
   const monthLabel = labelForDashboardMonth(selectedMonth);
+  const editing = searchParams?.editIncome === '1';
 
   return (
     <article className="widget">
@@ -40,12 +41,16 @@ export default async function MonthlyIncomeCard({ selectedMonth }) {
               type="number"
               min="0"
               step="0.01"
-              defaultValue={income ?? ''}
+              defaultValue={editing && income !== null ? income : 0}
               placeholder="0.00"
+              readOnly={!editing && income !== null}
               required
             />
           </label>
-          <button type="submit">Save Income</button>
+          <div className="income-actions">
+            <button type="submit">Save</button>
+            <a className="button ghost" href={`/dashboard?month=${selectedMonth}&editIncome=1`}>Edit</a>
+          </div>
         </form>
       </div>
       <footer className="muted">Saved only for {monthLabel}; it does not change Bills, Payments, Budget, or Credits.</footer>
