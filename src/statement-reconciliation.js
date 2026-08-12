@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 const MONTHS = Object.fromEntries(['january','february','march','april','may','june','july','august','september','october','november','december'].map((name, i) => [name, i + 1]));
 const EXCLUDED = /\b(restaurant|cafe|coffee|starbucks|mcdonald|wendy|gas|fuel|shell|quiktrip|walmart|target|cash app|venmo|zelle)\b/i;
 const RECURRING_HINT = /\b(payment|autopay|insurance|utility|water|mobile|wireless|credit|card|loan|mortgage|property|life)\b/i;
+const cents = (value) => Math.round(Number(value ?? 0) * 100);
 
 export function monthFromDate(value) { return value ? String(value).slice(0, 7) : null; }
 
@@ -65,6 +66,50 @@ export function reconcileTransactions(transactions, bills, { amountTolerance = 5
     if (RECURRING_HINT.test(transaction.rawDescription)) return { ...transaction, status: 'NEW', reason: 'Likely recurring bill; approval required' };
     return { ...transaction, status: 'Unmatched', reason: 'No reliable Master Bill match' };
   });
+}
+
+export function planStatementPayments(rows, existingPayments = []) {
+  const linkedPaymentIds = new Set(rows.map((row) => row.payment_id).filter(Boolean));
+  const pending = rows.filter((row) => ['Matched', 'Amount Variance'].includes(row.match_status) && !row.payment_id && row.bill_id && row.occurrence_id);
+  const actions = [];
+  const byOccurrence = new Map();
+
+  for (const row of pending) {
+    const list = byOccurrence.get(row.occurrence_id) ?? [];
+    list.push(row);
+    byOccurrence.set(row.occurrence_id, list);
+  }
+
+  for (const [occurrenceId, occurrenceRows] of byOccurrence) {
+    const available = existingPayments
+      .filter((payment) => payment.occurrence_id === occurrenceId && !linkedPaymentIds.has(payment.id))
+      .map((payment) => ({ ...payment, used: false }));
+    const unmatchedRows = [];
+
+    for (const row of occurrenceRows) {
+      let payment = available.find((candidate) => !candidate.used && cents(candidate.amount) === cents(row.amount) && candidate.payment_date === row.transaction_date);
+      if (!payment) payment = available.find((candidate) => !candidate.used && cents(candidate.amount) === cents(row.amount));
+      if (payment) {
+        payment.used = true;
+        actions.push({ row, action: 'link-existing', paymentId: payment.id });
+      } else {
+        unmatchedRows.push(row);
+      }
+    }
+
+    const unusedPayments = available.filter((payment) => !payment.used);
+    const statementTotal = unmatchedRows.reduce((sum, row) => sum + cents(row.amount), 0);
+    const existingTotal = unusedPayments.reduce((sum, payment) => sum + cents(payment.amount), 0);
+
+    if (unmatchedRows.length && unusedPayments.length && statementTotal === existingTotal) {
+      for (const row of unmatchedRows) actions.push({ row, action: 'covered-by-existing' });
+      continue;
+    }
+
+    for (const row of unmatchedRows) actions.push({ row, action: 'create-payment' });
+  }
+
+  return actions;
 }
 
 export function statementHash(buffer) { return createHash('sha256').update(buffer).digest('hex'); }
