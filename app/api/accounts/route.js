@@ -42,6 +42,33 @@ export async function POST(request) {
   }
 }
 
+export async function PATCH(request) {
+  try {
+    const input = await request.json();
+    const id = String(input.id ?? '').trim();
+    if (!id) throw new Error('Account id is required.');
+
+    const account = normalizeAccount(input);
+    const rows = await supabaseRequest(`ledger_accounts?id=eq.${encodeURIComponent(id)}&is_active=eq.true&select=id,institution,kind,is_active`, {
+      method: 'PATCH',
+      headers: { Prefer: 'return=representation' },
+      body: account,
+    });
+
+    if (!rows?.length) {
+      return NextResponse.json({ error: 'Account not found.' }, { status: 404 });
+    }
+
+    return NextResponse.json({ account: rows[0] });
+  } catch (error) {
+    const duplicate = error.message.includes('duplicate key');
+    return NextResponse.json(
+      { error: duplicate ? 'That active bank account already exists.' : error.message },
+      { status: duplicate ? 409 : 400 },
+    );
+  }
+}
+
 export async function DELETE(request) {
   try {
     const { id } = await request.json();
