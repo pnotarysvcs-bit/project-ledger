@@ -97,7 +97,7 @@ export default async function DashboardPage({ searchParams }) {
           <footer><span className="muted">{summary.submittedCount} of {plural(summary.activeCount, 'bill occurrence')} submitted</span><div className="progress-track"><div className="progress-fill" style={{ width: `${summary.activeCount ? summary.submittedCount / summary.activeCount * 100 : 0}%` }} /></div></footer>
         </article>
 
-        <MonthlyIncomeCard selectedMonth={selectedMonth} />
+        <MonthlyIncomeCard selectedMonth={selectedMonth} searchParams={params} />
       </section>
 
       <section className="widget-row">
