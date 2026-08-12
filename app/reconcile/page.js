@@ -67,9 +67,8 @@ async function completeReconciliation(formData) {
   if (unresolved.length) throw new Error('Dismiss or resolve all NEW and Unmatched items before completing reconciliation.');
   for (const row of rows.filter((value) => ['Matched', 'Amount Variance'].includes(value.match_status) && !value.payment_id)) {
     if (!row.bill_id || !row.occurrence_id) continue;
-    if (row.match_status === 'Amount Variance') await supabaseRequest(`ledger_bill_months?id=eq.${row.occurrence_id}&bill_id=eq.${row.bill_id}`, { method: 'PATCH', body: { actual_amount: row.amount } });
     const payment = await supabaseRequest('ledger_bill_payments?select=id', { method: 'POST', headers: { Prefer: 'return=representation' }, body: { bill_id: row.bill_id, occurrence_id: row.occurrence_id, amount: row.amount, payment_month: item.effective_month, payment_date: row.transaction_date, funding_account: 'Statement import', notes: `Statement reconciliation ${importId}` } });
-    await supabaseRequest(`ledger_statement_transactions?id=eq.${row.id}`, { method: 'PATCH', body: { payment_id: payment?.[0]?.id, resolved_at: new Date().toISOString() } });
+    await supabaseRequest(`ledger_statement_transactions?id=eq.${row.id}`, { method: 'PATCH', body: { payment_id: payment?.[0]?.id, resolved_at: new Date().toISOString(), decision_note: row.match_status === 'Amount Variance' ? 'Payment imported; Actual Bill Amount preserved.' : row.decision_note } });
   }
   await supabaseRequest(`ledger_statement_imports?id=eq.${encodeURIComponent(importId)}`, { method: 'PATCH', body: { status: 'completed', completed_at: new Date().toISOString() } });
   revalidatePath('/'); revalidatePath('/dashboard'); redirect(`/?month=${item.effective_month.slice(0, 7)}&notice=Statement+reconciliation+completed.`);
