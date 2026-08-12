@@ -8,6 +8,7 @@ import {
   changePayment,
   createBill,
   deletePayment,
+  recordBulkPayments,
   recordPayment,
   updateBill,
 } from '../src/bills/service.js';
@@ -105,6 +106,17 @@ export async function submitBillAction(data) {
     notes: 'Full payment submitted',
   });
   redirectToBills({ ...common, message: 'Bill submitted.' });
+}
+
+export async function bulkSubmitAction(data) {
+  const month = normalizeLedgerMonth(value(data, 'month'));
+  const rows = await getLedgerBills({ selectedMonth: month });
+  const result = await recordBulkPayments({
+    month,
+    currentMonth: new Date().toISOString().slice(0, 7),
+    bills: rows,
+  });
+  redirectToBills({ month, message: `${result.count} bills submitted.` });
 }
 
 export async function updatePaymentAction(data) {
