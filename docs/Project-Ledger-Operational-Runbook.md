@@ -2,36 +2,26 @@
 
 ## Purpose
 
-This runbook is the durable operational memory for Project Ledger. It captures production defects, root causes, corrective actions, regression gaps, verification evidence, and guardrails that future changes must consult before implementation.
+This runbook is the durable operational memory for Project Ledger. It records production defects, root causes, corrective actions, regression protections, deployment guardrails, and release evidence.
 
-It complements, but does not replace, the authoritative requirements and architecture documents. Requirements define intended behavior; this runbook records what has failed in practice, why it failed, how it was corrected, and what must be re-tested to prevent recurrence.
+It complements the authoritative requirements and architecture documents. Requirements define intended behavior; this runbook records what failed in practice, why it failed, and how recurrence is prevented.
 
 ## Governing Use
 
-Before modifying Bills, Accounts, Statements, Supabase schema, persistence, or production deployment behavior:
+Before modifying Bills, Accounts, Statements, Supabase schema, persistence, PWA behavior, or production deployment:
 
 1. Read `Project-Ledger-Bills-Dashboard-README.md` for authoritative functional requirements.
 2. Read `docs/issue-44-architecture-baseline.md` for canonical Bills architecture and mutation boundaries.
 3. Read this runbook for known failure modes and regression traps.
 4. Identify affected workflows, not only affected functions/files.
 5. Add or update regression coverage for the exact business scenario being changed.
-6. Do not declare regression complete solely because unit/service tests pass; verify the end-to-end user behavior represented by the prior defect.
+6. Do not declare a Bills change complete solely because a component or helper test passes.
 
 ## Regression Standard
 
-A regression suite is considered adequate only when it exercises the business workflow that previously failed. Helper-function, schema-contract, and service-level tests remain necessary but are not sufficient on their own.
+Regression coverage must exercise the business workflow that previously failed. Unit, service, schema-contract, and source-contract tests are necessary but should protect the user-visible workflow and persistence semantics.
 
-For every production defect, capture:
-
-- User action that triggered the defect.
-- Exact observed failure or digest/error code when available.
-- System layer where the failure occurred: UI, Next.js/server action, service/domain, repository, Supabase, deployment, or integration.
-- Root cause.
-- Corrective change.
-- Data-preservation considerations.
-- Exact regression scenario added.
-- CI/build/deployment evidence.
-- Production validation result.
+For production defects, record the trigger, observed failure, system layer, root cause, corrective change, data-preservation considerations, regression scenario, deployment evidence, and production validation result.
 
 ## Known Failure Modes and Lessons
 
@@ -39,116 +29,114 @@ For every production defect, capture:
 
 **Observed behavior:** Statement upload failed before reconciliation because production Supabase schema and application code used different reconciliation column contracts.
 
-**Root cause:** Application code queried/wrote canonical columns while production retained older reconciliation schema assumptions.
+**Root cause:** Application code queried/wrote canonical columns while production retained older reconciliation assumptions.
 
 **Correction:** Production schema was aligned to the canonical statement-reconciliation contract and repository migrations were synchronized with production.
 
-**Regression requirement:** Statement upload schema-contract tests must verify every application column exists in the canonical migrations and that legacy column names do not return.
+**Regression requirement:** Statement schema-contract tests must verify application columns and obsolete constraints.
 
-**Lesson:** A migration file existing in the repository is not proof that production schema matches it. Schema/app contract validation must be part of release verification.
+**Lesson:** A migration in the repository is not proof that production schema matches it.
 
 ### RL-002 — Legacy NOT NULL constraints blocked canonical statement uploads
 
-**Observed behavior:** Even after canonical columns were present, uploads could still fail because legacy columns such as `statement_hash`, `file_name`, and `transaction_key` remained `NOT NULL`.
+**Observed behavior:** Legacy reconciliation columns could block canonical inserts even after new columns were present.
 
-**Root cause:** Forward schema alignment added canonical fields but did not fully release obsolete constraints.
+**Root cause:** Forward schema alignment added canonical fields without fully releasing obsolete constraints.
 
-**Correction:** Legacy NOT NULL constraints were removed while preserving existing reconciliation data.
+**Correction:** Legacy NOT NULL constraints were removed while preserving reconciliation data.
 
-**Regression requirement:** Schema tests must verify obsolete legacy columns cannot block canonical inserts.
-
-**Lesson:** Schema compatibility requires validating constraints as well as column presence.
+**Regression requirement:** Schema tests must verify obsolete legacy constraints cannot block canonical inserts.
 
 ### RL-003 — Historical statement month falsely compared with current Bills month
 
-**Observed behavior:** Uploading an April 2026 statement while the application was displaying August 2026 triggered a server-action failure even though April was correctly detected from the statement.
+**Observed behavior:** Uploading an April 2026 statement while viewing August 2026 triggered a server-action failure although April was correctly detected.
 
-**Root cause:** Upload logic treated `viewedMonth !== detected statement month` as a confirmation/error condition.
+**Root cause:** Upload logic treated `viewedMonth !== detected statement month` as an error condition.
 
-**Correction:** The detected statement period now drives reconciliation. A different Bills screen month is not an exception. Confirmation is reserved for a genuinely cross-month statement or a deliberate override that conflicts with the detected month.
+**Correction:** The detected statement period drives reconciliation. Confirmation is reserved for a genuinely cross-month statement or a manual override that conflicts with the detected month.
 
-**Regression requirement:** Explicitly test: April statement detected as April while the surrounding app context is August; no false warning; cross-month statements still require confirmation; same-month overrides pass; conflicting manual overrides require confirmation.
-
-**Lesson:** Historical reconciliation must be driven by source-document period, not transient UI context.
+**Regression requirement:** Preserve the April-from-August scenario plus cross-month and override confirmation cases.
 
 ### RL-004 — Existing payment duplication risk during statement reconciliation
 
-**Observed behavior addressed during design:** Historical bills may already have submitted or partial payments before a statement is imported.
+Historical submitted or partial payments must be matched and linked before new payments are created. Reconciliation must not overwrite `Actual Bill Amount`, and existing linked payment IDs must not be reused for different statement rows.
 
-**Required behavior:**
+**Regression requirement:** Preserve full-payment, partial-payment, split-payment, and no-duplicate scenarios.
 
-- Existing $100 submitted payment + statement $100 → link existing payment, create no duplicate.
-- Existing $40 payment + statement $40 and $60 → link $40 and create only missing $60.
-- Split statement rows already represented by one existing $100 payment → mark as covered; create no duplicate.
-- Existing linked payment IDs must not be reused for a different row.
-- `Actual Bill Amount` remains independent and must not be overwritten by reconciliation.
+### RL-005 — Legacy Category values blocked Bills edits
 
-**Regression requirement:** Preserve dedicated tests for all scenarios above.
+**Observed behavior:** Editing the FedEx bill Category failed before persistence. The affected record had Type `Personal`, legacy Category `Business`, Account `TCU`, and Budget `$104.30`.
 
-**Lesson:** Reconciliation is a matching/linking workflow first; payment creation is only the fallback for genuinely missing payment history.
+**Root cause:** The edit service validated the submitted Category value as though every edit were creating a new category. A legacy invalid Category such as `Business` or `Personal` therefore blocked unrelated or corrective edits before the change reached Supabase.
 
-### RL-005 — Bills edit workflow can fail when changing only Category
+**Correction:** Existing legacy Category values no longer block an edit when the user leaves that legacy value unchanged, while attempts to introduce a new invalid Category remain rejected. A Category correction to a valid value persists through the canonical service/repository path. TCU/TCUB account-driven Type derivation remains authoritative.
 
-**Observed behavior:** Editing the FedEx bill Category produced a Next.js/server-action error before the change reached Supabase. The production FedEx record remained unchanged.
+**Regression requirement:** Preserve tests for legacy `Business`/`Personal` Category correction, unrelated edits on legacy records, submitted-bill edits, Actual-only edits, Budget-only edits, and account changes that derive Personal/Business Type.
 
-**Production data observed at failure:** Fedex; Type `Personal`; Category `Business`; Account `TCU`; Budget `$104.30`.
+**Lesson:** Validation for edits must distinguish existing legacy data from newly introduced invalid data. A single-field change must not null, rewrite, or invalidate unrelated persisted fields.
 
-**Root cause under investigation:** The edit workflow submits and validates the full bill identity even when the user changes one field. This allows unrelated validation or derived-field logic to block a Category-only correction before persistence.
+### RL-006 — Installed app must not serve stale financial data
 
-**Required correction:** Category-only edits must be able to persist without rewriting or unnecessarily validating unrelated fields beyond what is required to maintain record integrity. Existing payment history and unrelated bill fields must remain unchanged.
+**Risk:** A conventional offline-first PWA service worker can cache HTML, application bundles, API responses, or financial views and make an installed Project Ledger app appear out of date after a deployment or data change.
 
-**Regression requirement:** Add exact production-behavior tests for:
+**Correction:** Project Ledger uses installability metadata and a service worker without application/data caching. Navigation, API, and application requests remain network-backed. No cache fallback is used for Bills or Statements data.
 
-- Legacy/invalid Category `Business` → user edits only Category → Save succeeds → new Category persists → page reloads normally → unrelated fields unchanged → payments unchanged.
-- Category-only edit on a submitted bill remains permitted where the requirements allow editing.
-- Budget-only edit changes Budget and nothing else.
-- Actual-only edit changes Actual and nothing else.
-- A single-field edit must not null/rewrite unrelated values.
+**Regression requirement:** Verify manifest installability, service-worker registration, 192x192 and 512x512 icons, standalone mode, and absence of `cache.put` / `caches.match` behavior.
 
-**Lesson:** Mutation tests must verify partial user intent, not only successful full-form submissions.
+**Lesson:** For this financial application, installability is valuable; offline financial-data caching is not.
 
 ## Bills Architectural Guardrails
 
 - Bills Master is the canonical source of bill identity and recurring attributes.
 - Business and Personal are Types, not Categories.
 - TCU derives Personal; TCUB derives Business; Streaming is explicit where applicable.
-- `Actual Bill Amount` is independent from payments.
+- `Actual Bill Amount` is independent from payments and remains editable after submission.
 - Submitted amount is the sum of payment records.
 - Saving one editable field must not null or rewrite unrelated fields.
 - Editing an existing bill must not discard payment history.
 - No `Future` status/bucket.
+- Selecting a month changes the monthly view immediately; no `View` button is required.
 - Display/group order: Personal → Business → Streaming.
 - Within a group, due date ascending, then bill name tie-break.
-- Bills mutations should pass through the canonical service/repository path rather than ad hoc Supabase writes from UI code.
+- Filters apply to supported columns except Actions.
+- Bills mutations pass through the canonical service/repository path rather than ad hoc Supabase writes from UI code.
 
-## Statement Reconciliation Guardrails
+## PWA Guardrails
 
-- The statement itself determines the reporting month whenever the printed period is detectable.
-- The current Bills month must not override or invalidate a correctly detected historical statement month.
-- Cross-month statements require explicit confirmation.
-- Manual overrides that conflict with detected period require confirmation.
-- Duplicate statement hashes must return the existing import rather than create another import.
-- Existing submitted/partial payments must be linked or credited before creating new payment rows.
-- Reconciliation must not overwrite Actual.
-- Completion must block unresolved `NEW` and `Unmatched` rows.
+- Manifest name: Project Ledger; short name: Ledger.
+- `display: standalone` and mobile viewport metadata are required.
+- Service-worker registration must remain explicit and production-safe.
+- Do not cache Bills, Statements, API responses, server actions, or deployment HTML/bundles in a way that can present stale financial information.
+- PWA changes must not redesign the existing UI.
+
+## Deployment Identity
+
+- GitHub repository: `pnotarysvcs-bit/project-ledger`.
+- Vercel project ID: `prj_uKSSmtrWFvrGi7rHz1Gnvo2Rf0HC`.
+- Before production acceptance, verify the production deployment is tied to the expected `main` commit and the Project Ledger Vercel project, not an older or similarly named project.
+- When the Vercel dashboard shows multiple deployments, confirm the commit SHA and Production environment rather than relying only on a generic Visit button.
 
 ## Release and Verification Checklist
 
-Before merging a change that touches a known failure mode:
+Before merging a Bills/PWA change:
 
-- Confirm the requirements document and architecture baseline still support the intended behavior.
-- Add/update a regression test for the exact prior production scenario.
-- Run full regression suite.
-- Run production build.
-- Verify schema migrations and production schema contract when database fields/constraints are involved.
-- Confirm Vercel preview/deployment checks.
-- For high-risk persistence changes, validate that unrelated records and payment history remain unchanged.
-- Record the resulting PR/commit and production validation in this runbook.
+- Confirm requirements and architecture support the intended behavior.
+- Add/update regression coverage for exact prior production scenarios.
+- Confirm branch is not behind `main`.
+- Validate Vercel Preview/build status for the branch head.
+- Verify no destructive database migration or financial-data deletion is included.
+- Verify no secrets/credentials are introduced in client-facing files.
+- Review the complete branch diff for scope creep.
+- Merge only when applicable checks are green.
+- Confirm production deployment is based on the resulting `main` commit.
+- Perform critical production smoke tests for month switching, due-date order, editing, submitted Actual editing, filters, Statements, and PWA installability.
 
 ## Change Log
 
 ### 2026-08-12
 
-- Created operational runbook after repeated production/UAT failures exposed gaps between implementation-level regression testing and actual workflow behavior.
-- Captured statement schema drift, legacy constraint failure, historical-month detection defect, payment-duplication safeguards, and the FedEx Category edit failure.
-- Established rule that future regression testing must include the exact business workflow that previously failed, not only unit/helper/service tests.
+- Created the operational runbook after repeated UAT/production regressions.
+- Captured statement schema drift, historical-month detection, duplicate-payment protections, and the FedEx Category failure.
+- Finalized the FedEx root cause and correction: legacy Category values no longer block unrelated or corrective edits.
+- Added PWA installability with network-backed behavior and no stale financial-data cache.
+- Recorded canonical GitHub/Vercel deployment identity and production verification guardrails.
