@@ -7,6 +7,15 @@ export function createBillsRepository(request = supabaseRequest) {
       return rows?.[0] ?? null;
     },
 
+    async createMasterBill(payload) {
+      const rows = await request('ledger_bills?select=id', {
+        method: 'POST',
+        headers: { Prefer: 'return=representation' },
+        body: payload,
+      });
+      return rows?.[0] ?? null;
+    },
+
     async updateMasterBill(id, patch) {
       if (!Object.keys(patch).length) return;
       await request(`ledger_bills?id=eq.${encodeURIComponent(id)}`, { method: 'PATCH', body: patch });
@@ -39,7 +48,12 @@ export function createBillsRepository(request = supabaseRequest) {
     },
 
     async addPayment(payload) {
-      await request('ledger_bill_payments', { method: 'POST', body: payload });
+      const rows = await request('ledger_bill_payments?select=id', {
+        method: 'POST',
+        headers: { Prefer: 'return=representation' },
+        body: payload,
+      });
+      return rows?.[0] ?? null;
     },
 
     async updatePayment({ billId, occurrenceId, paymentId, month }, patch) {
