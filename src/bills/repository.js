@@ -56,6 +56,16 @@ export function createBillsRepository(request = supabaseRequest) {
       return rows?.[0] ?? null;
     },
 
+    async addPayments(payloads) {
+      if (!payloads.length) return [];
+      const rows = await request('ledger_bill_payments?select=id', {
+        method: 'POST',
+        headers: { Prefer: 'return=representation' },
+        body: payloads,
+      });
+      return rows ?? [];
+    },
+
     async updatePayment({ billId, occurrenceId, paymentId, month }, patch) {
       await request(`ledger_bill_payments?id=eq.${encodeURIComponent(paymentId)}&bill_id=eq.${encodeURIComponent(billId)}&occurrence_id=eq.${encodeURIComponent(occurrenceId)}&payment_month=eq.${month}-01`, { method: 'PATCH', body: patch });
     },
