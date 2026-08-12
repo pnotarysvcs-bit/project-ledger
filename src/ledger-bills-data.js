@@ -301,10 +301,18 @@ export function getLedgerOverview(rows) {
   });
 }
 
+const BILL_SECTION_ORDER = new Map([
+  ['Personal', 0],
+  ['Business', 1],
+  ['Streaming', 2],
+]);
+
 export function groupLedgerBills(rows) {
   return [...rows.reduce((groups, bill) => {
     if (!groups.has(bill.type)) groups.set(bill.type, []);
     groups.get(bill.type).push(bill);
     return groups;
-  }, new Map()).entries()].map(([type, bills]) => ({ type, bills }));
+  }, new Map()).entries()]
+    .sort(([left], [right]) => (BILL_SECTION_ORDER.get(left) ?? 99) - (BILL_SECTION_ORDER.get(right) ?? 99) || left.localeCompare(right))
+    .map(([type, bills]) => ({ type, bills }));
 }
