@@ -1,0 +1,137 @@
+import Link from 'next/link';
+import { redirect } from 'next/navigation';
+import { revalidatePath } from 'next/cache';
+import pdf from 'pdf-parse/lib/pdf-parse.js';
+import { getLedgerBills, normalizeLedgerMonth } from '../../src/ledger-bills-data.js';
+import { supabaseRequest } from '../../src/supabase-server.js';
+import { detectStatementPeriod, effectiveStatementMonth, extractTransactions, planStatementPayments, reconcileTransactions, statementHash } from '../../src/statement-reconciliation.js';
+
+export const dynamic = 'force-dynamic';
+const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+
+async function uploadStatement(formData) {
+  'use server';
+  const file = formData.get('statement');
+  if (!file || file.size === 0) throw new Error('Choose a PDF or CSV statement.');
+  if (file.size > 10 * 1024 * 1024) throw new Error('Statement files must be 10 MB or smaller.');
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const hash = statementHash(buffer);
+  const duplicate = await supabaseRequest(`ledger_statement_imports?select=id,effective_month&source_hash=eq.${hash}`);
+  if (duplicate[0]) redirect(`/reconcile?import=${duplicate[0].id}&duplicate=1`);
+  const isCsv = /csv/i.test(file.type) || file.name.toLowerCase().endsWith('.csv');
+  if (!isCsv && !file.name.toLowerCase().endsWith('.pdf')) throw new Error('PDF is required for UAT; CSV is also accepted.');
+  const text = isCsv ? buffer.toString('utf8') : (await pdf(buffer)).text;
+  const detection = detectStatementPeriod(text);
+  const override = String(formData.get('monthOverride') ?? '').trim() || null;
+  const selectedMonth = effectiveStatementMonth(detection, override);
+  if (!selectedMonth) throw new Error('The statement period could not be detected. Enter a reporting month override and upload again.');
+  const viewedMonth = String(formData.get('viewedMonth') ?? '').trim();
+  const warningRequired = detection.spansMonths || (viewedMonth && viewedMonth !== selectedMonth);
+  if (warningRequired && formData.get('confirmWarning') !== 'yes') throw new Error(`The detected month (${selectedMonth}) conflicts or spans months. Confirm the warning before importing.`);
+  const bills = await getLedgerBills({ selectedMonth });
+  const year = Number(selectedMonth.slice(0, 4));
+  const reconciled = reconcileTransactions(extractTransactions(text, year), bills);
+  const created = await supabaseRequest('ledger_statement_imports?select=id', { method: 'POST', headers: { Prefer: 'return=representation' }, body: { source_name: file.name, source_hash: hash, period_start: detection.start, period_end: detection.end, detected_month: detection.detectedMonth ? `${detection.detectedMonth}-01` : null, override_month: override ? `${override}-01` : null, effective_month: `${selectedMonth}-01`, warning_confirmed: !warningRequired || formData.get('confirmWarning') === 'yes' } });
+  const importId = created?.[0]?.id;
+  if (!importId) throw new Error('Statement import was not confirmed by the database.');
+  if (reconciled.length) await supabaseRequest('ledger_statement_transactions', { method: 'POST', body: reconciled.map((row, index) => ({ import_id: importId, source_identity: statementHash(Buffer.from(`${row.date}|${row.rawDescription}|${row.amount}|${index}`)), transaction_date: row.date, raw_description: row.rawDescription, normalized_payee: row.normalizedPayee, amount: row.amount, expected_amount: row.expectedAmount ?? null, match_status: row.status, bill_id: row.billId ?? null, occurrence_id: row.occurrenceId ?? null, confidence: row.confidence ?? null, decision_note: row.reason ?? null })) });
+  redirect(`/reconcile?import=${importId}`);
+}
+
+async function resolveTransaction(formData) {
+  'use server';
+  const id = String(formData.get('id')); const importId = String(formData.get('importId')); const decision = String(formData.get('decision'));
+  if (decision === 'dismiss') await supabaseRequest(`ledger_statement_transactions?id=eq.${encodeURIComponent(id)}&import_id=eq.${encodeURIComponent(importId)}`, { method: 'PATCH', body: { match_status: 'Dismissed', decision_note: 'Dismissed by user', resolved_at: new Date().toISOString() } });
+  if (decision === 'approve-new') {
+    const transaction = (await supabaseRequest(`ledger_statement_transactions?select=*&id=eq.${encodeURIComponent(id)}&import_id=eq.${encodeURIComponent(importId)}`))[0];
+    const imported = (await supabaseRequest(`ledger_statement_imports?select=effective_month&id=eq.${encodeURIComponent(importId)}`))[0];
+    if (!transaction || !imported) throw new Error('The proposed bill could not be found.');
+    const billName = String(formData.get('billName') ?? transaction.raw_description).trim();
+    const category = String(formData.get('category') ?? '').trim(); const account = String(formData.get('account') ?? '').trim().toUpperCase();
+    if (!billName || !category || !account) throw new Error('Bill name, category, and account are required to approve a NEW bill.');
+    const created = await supabaseRequest('ledger_bills?select=id', { method: 'POST', headers: { Prefer: 'return=representation' }, body: { bill_name: billName, bill_type: account.startsWith('TCUB') ? 'Business' : 'Personal', category, account, budget: transaction.amount, frequency: 'monthly', due_day: Number(transaction.transaction_date.slice(8, 10)), start_month: imported.effective_month, is_active: true, notes: `Approved from statement reconciliation ${importId}` } });
+    const billId = created?.[0]?.id; if (!billId) throw new Error('NEW bill creation was not confirmed.');
+    const occurrence = await supabaseRequest('ledger_bill_months?select=id', { method: 'POST', headers: { Prefer: 'return=representation' }, body: { bill_id: billId, month: imported.effective_month, occurrence_budget_amount: transaction.amount, actual_amount: transaction.amount, due_date: transaction.transaction_date, installment_key: transaction.transaction_date, migration_incomplete: false } });
+    await supabaseRequest(`ledger_statement_transactions?id=eq.${encodeURIComponent(id)}`, { method: 'PATCH', body: { match_status: 'Matched', bill_id: billId, occurrence_id: occurrence?.[0]?.id, expected_amount: transaction.amount, decision_note: 'Approved into Master Bills', resolved_at: new Date().toISOString() } });
+  }
+  revalidatePath('/reconcile'); redirect(`/reconcile?import=${importId}`);
+}
+
+async function completeReconciliation(formData) {
+  'use server';
+  const importId = String(formData.get('importId'));
+  const imports = await supabaseRequest(`ledger_statement_imports?select=*&id=eq.${encodeURIComponent(importId)}`);
+  const item = imports[0]; if (!item) throw new Error('Reconciliation import not found.');
+  const rows = await supabaseRequest(`ledger_statement_transactions?select=*&import_id=eq.${encodeURIComponent(importId)}`);
+  const unresolved = rows.filter((row) => ['NEW', 'Unmatched'].includes(row.match_status));
+  if (unresolved.length) throw new Error('Dismiss or resolve all NEW and Unmatched items before completing reconciliation.');
+
+  const existingPayments = await supabaseRequest(`ledger_bill_payments?select=id,bill_id,occurrence_id,amount,payment_date,payment_month&payment_month=eq.${item.effective_month}`);
+  const actions = planStatementPayments(rows, existingPayments);
+  const resolvedAt = new Date().toISOString();
+
+  for (const { row, action, paymentId } of actions) {
+    if (action === 'link-existing') {
+      await supabaseRequest(`ledger_statement_transactions?id=eq.${encodeURIComponent(row.id)}&import_id=eq.${encodeURIComponent(importId)}`, {
+        method: 'PATCH',
+        body: {
+          payment_id: paymentId,
+          resolved_at: resolvedAt,
+          decision_note: row.match_status === 'Amount Variance'
+            ? 'Matched to an existing payment; no duplicate created. Actual Bill Amount preserved.'
+            : 'Matched to an existing payment; no duplicate created.',
+        },
+      });
+      continue;
+    }
+
+    if (action === 'covered-by-existing') {
+      await supabaseRequest(`ledger_statement_transactions?id=eq.${encodeURIComponent(row.id)}&import_id=eq.${encodeURIComponent(importId)}`, {
+        method: 'PATCH',
+        body: {
+          resolved_at: resolvedAt,
+          decision_note: row.match_status === 'Amount Variance'
+            ? 'Already represented by existing payment history; no duplicate created. Actual Bill Amount preserved.'
+            : 'Already represented by existing payment history; no duplicate created.',
+        },
+      });
+      continue;
+    }
+
+    const payment = await supabaseRequest('ledger_bill_payments?select=id', {
+      method: 'POST',
+      headers: { Prefer: 'return=representation' },
+      body: {
+        bill_id: row.bill_id,
+        occurrence_id: row.occurrence_id,
+        amount: row.amount,
+        payment_month: item.effective_month,
+        payment_date: row.transaction_date,
+        funding_account: 'Statement import',
+        notes: `Statement reconciliation ${importId}`,
+      },
+    });
+    await supabaseRequest(`ledger_statement_transactions?id=eq.${encodeURIComponent(row.id)}&import_id=eq.${encodeURIComponent(importId)}`, {
+      method: 'PATCH',
+      body: {
+        payment_id: payment?.[0]?.id,
+        resolved_at: resolvedAt,
+        decision_note: row.match_status === 'Amount Variance' ? 'Payment imported; Actual Bill Amount preserved.' : row.decision_note,
+      },
+    });
+  }
+
+  await supabaseRequest(`ledger_statement_imports?id=eq.${encodeURIComponent(importId)}`, { method: 'PATCH', body: { status: 'completed', completed_at: resolvedAt } });
+  revalidatePath('/'); revalidatePath('/dashboard'); redirect(`/?month=${item.effective_month.slice(0, 7)}&notice=Statement+reconciliation+completed.`);
+}
+
+export default async function ReconcilePage({ searchParams }) {
+  const params = await searchParams; const importId = String(params?.import ?? ''); const viewedMonth = normalizeLedgerMonth(params?.month);
+  let item = null; let rows = [];
+  if (importId) { item = (await supabaseRequest(`ledger_statement_imports?select=*&id=eq.${encodeURIComponent(importId)}`))[0] ?? null; rows = item ? await supabaseRequest(`ledger_statement_transactions?select=*&import_id=eq.${encodeURIComponent(importId)}&order=transaction_date.asc`) : []; }
+  return <><p className="eyebrow">Statement reconciliation</p><div className="page-heading-row"><div><h1>Reconcile Statement</h1><p className="lede">Import posted payments, review exceptions, and preserve the Master Bills budget.</p></div><Link className="button ghost" href={`/?month=${item?.effective_month?.slice(0, 7) ?? viewedMonth}`}>Back to Bills</Link></div>
+    {!item && <section className="panel add-bill-panel"><header><strong>Upload monthly statement</strong></header><form action={uploadStatement} className="add-bill-form" encType="multipart/form-data"><input type="hidden" name="viewedMonth" value={viewedMonth}/><label>Statement (PDF or CSV)<input name="statement" type="file" accept="application/pdf,.pdf,text/csv,.csv" required/></label><label>Month override (only if needed)<input name="monthOverride" type="month"/></label><label><input name="confirmWarning" type="checkbox" value="yes"/> Confirm if the printed period spans months or differs from {viewedMonth}</label><div className="add-bill-actions"><button type="submit">Detect Month &amp; Review</button></div></form></section>}
+    {params?.duplicate === '1' && <p className="alert" role="status">This statement was already imported. The existing reconciliation is shown below.</p>}
+    {item && <><section className="summary"><article><span>Detected Month</span><strong>{item.detected_month?.slice(0,7) ?? 'Uncertain'}</strong><small>{item.period_start ?? '?'} to {item.period_end ?? '?'}</small></article><article><span>Reporting Month</span><strong>{item.effective_month.slice(0,7)}</strong><small>{item.override_month ? 'User override retained' : 'Detected period used'}</small></article><article><span>Status</span><strong>{item.status}</strong><small>{item.source_name}</small></article></section><section className="panel"><header><strong>Review transactions</strong><span>{rows.length} posted debits</span></header><div className="table-wrap"><table><thead><tr><th>Bill / Payee</th><th>Expected Amount</th><th>Statement Amount</th><th>Payment Date</th><th>Match Status</th><th>Review / Action</th></tr></thead><tbody>{rows.map((row) => <tr key={row.id}><td><b>{row.raw_description}</b></td><td>{row.expected_amount == null ? '—' : money.format(row.expected_amount)}</td><td>{money.format(row.amount)}</td><td>{row.transaction_date}</td><td><span className={`status ${row.match_status.toLowerCase().replace(/\s/g,'-')}`}>{row.match_status}</span></td><td>{row.match_status === 'NEW' ? <div className="inline-payment"><form action={resolveTransaction} className="inline-form"><input type="hidden" name="id" value={row.id}/><input type="hidden" name="importId" value={item.id}/><input type="hidden" name="decision" value="approve-new"/><label>Bill name<input name="billName" defaultValue={row.raw_description} required/></label><label>Category<input name="category" required/></label><label>Account<input name="account" placeholder="TCU or TCUB" required/></label><button type="submit">Approve NEW Bill</button></form><form action={resolveTransaction}><input type="hidden" name="id" value={row.id}/><input type="hidden" name="importId" value={item.id}/><input type="hidden" name="decision" value="dismiss"/><button className="ghost" type="submit">Dismiss</button></form></div> : row.match_status === 'Unmatched' ? <form action={resolveTransaction}><input type="hidden" name="id" value={row.id}/><input type="hidden" name="importId" value={item.id}/><input type="hidden" name="decision" value="dismiss"/><button className="ghost" type="submit">Dismiss</button></form> : row.decision_note ?? 'Ready'}</td></tr>)}</tbody></table></div></section>{item.status !== 'completed' && <form action={completeReconciliation}><input type="hidden" name="importId" value={item.id}/><button type="submit">Complete Reconciliation</button></form>}</>}
+  </>;
+}
