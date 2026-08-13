@@ -56,10 +56,15 @@ async function uploadStatement(formData) {
   const selectedMonth = effectiveStatementMonth(detection, override);
   if (!selectedMonth) throw new Error('The statement period could not be detected. Enter a reporting month override and upload again.');
   const warningRequired = statementWarningRequired(detection, override);
-  if (warningRequired && formData.get('confirmWarning') !== 'yes') throw new Error(`The detected statement period (${selectedMonth}) requires confirmation before importing.`);
+  if (warningRequired && formData.get('confirmWarning') !== 'yes') {
+    const printedPeriod = detection.start && detection.end ? `${detection.start} through ${detection.end}` : selectedMonth;
+    const notice = `This statement covers ${printedPeriod} and will be reconciled to ${selectedMonth}. Check the confirmation box and upload the same statement again.`;
+    redirect(`/reconcile?month=${selectedMonth}&notice=${encodeURIComponent(notice)}`);
+  }
   const bills = await getBillsWithAliases(selectedMonth);
   const year = Number(selectedMonth.slice(0, 4));
-  const reconciled = reconcileTransactions(extractTransactions(text, year), bills, { amountTolerance: AMOUNT_TOLERANCE });
+  const anchorMonth = Number((detection.end ?? `${selectedMonth}-01`).slice(5, 7));
+  const reconciled = reconcileTransactions(extractTransactions(text, year, anchorMonth), bills, { amountTolerance: AMOUNT_TOLERANCE });
   const created = await supabaseRequest('ledger_statement_imports?select=id', {
     method: 'POST',
     headers: { Prefer: 'return=representation' },
