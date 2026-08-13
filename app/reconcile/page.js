@@ -62,15 +62,20 @@ async function completeReconciliation(formData) {
   const imports = await supabaseRequest(`ledger_statement_imports?select=*&id=eq.${encodeURIComponent(importId)}`);
   const item = imports[0]; if (!item) throw new Error('Reconciliation import not found.');
   const rows = await supabaseRequest(`ledger_statement_transactions?select=*&import_id=eq.${encodeURIComponent(importId)}`);
+  if (!rows.length) throw new Error('This statement has no parsed transactions. It cannot be marked completed.');
   const unresolved = rows.filter((row) => ['NEW', 'Unmatched'].includes(row.match_status));
   if (unresolved.length) throw new Error('Dismiss or resolve all NEW and Unmatched items before completing reconciliation.');
 
-  const existingPayments = await supabaseRequest(`ledger_bill_payments?select=id,bill_id,occurrence_id,amount,payment_date,payment_month&payment_month=eq.${item.effective_month}`);
+  const existingPayments = await supabaseRequest(`ledger_bill_payments?select=id,bill_id,occurrence_id,amount,payment_date,payment_month,statement_transaction_id&payment_month=eq.${item.effective_month}`);
   const actions = planStatementPayments(rows, existingPayments);
   const resolvedAt = new Date().toISOString();
 
   for (const { row, action, paymentId } of actions) {
     if (action === 'link-existing') {
+      await supabaseRequest(`ledger_bill_payments?id=eq.${encodeURIComponent(paymentId)}`, {
+        method: 'PATCH',
+        body: { statement_transaction_id: row.id },
+      });
       await supabaseRequest(`ledger_statement_transactions?id=eq.${encodeURIComponent(row.id)}&import_id=eq.${encodeURIComponent(importId)}`, {
         method: 'PATCH',
         body: {
@@ -108,17 +113,24 @@ async function completeReconciliation(formData) {
         payment_date: row.transaction_date,
         funding_account: 'Statement import',
         notes: `Statement reconciliation ${importId}`,
+        statement_transaction_id: row.id,
       },
     });
+    const paymentId = payment?.[0]?.id;
+    if (!paymentId) throw new Error('A statement payment could not be confirmed. Reconciliation was not completed.');
     await supabaseRequest(`ledger_statement_transactions?id=eq.${encodeURIComponent(row.id)}&import_id=eq.${encodeURIComponent(importId)}`, {
       method: 'PATCH',
       body: {
-        payment_id: payment?.[0]?.id,
+        payment_id: paymentId,
         resolved_at: resolvedAt,
         decision_note: row.match_status === 'Amount Variance' ? 'Payment imported; Actual Bill Amount preserved.' : row.decision_note,
       },
     });
   }
+
+  const finalRows = await supabaseRequest(`ledger_statement_transactions?select=id,match_status,payment_id,resolved_at,decision_note&import_id=eq.${encodeURIComponent(importId)}`);
+  const incomplete = finalRows.filter((row) => ['Matched', 'Amount Variance'].includes(row.match_status) && !row.payment_id && !row.resolved_at);
+  if (incomplete.length) throw new Error('Some matched statement transactions are not fully reconciled. The import remains in Review.');
 
   await supabaseRequest(`ledger_statement_imports?id=eq.${encodeURIComponent(importId)}`, { method: 'PATCH', body: { status: 'completed', completed_at: resolvedAt } });
   revalidatePath('/'); revalidatePath('/dashboard'); redirect(`/?month=${item.effective_month.slice(0, 7)}&notice=Statement+reconciliation+completed.`);
