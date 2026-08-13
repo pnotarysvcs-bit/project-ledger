@@ -9,6 +9,8 @@ import { detectStatementPeriod, effectiveStatementMonth, extractTransactions, no
 export const dynamic = 'force-dynamic';
 const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
 const AMOUNT_TOLERANCE = 5;
+const REVIEW_STATUSES = ['NEW', 'Unmatched', 'Amount Variance'];
+const STATUS_FILTERS = ['all', 'Matched', 'needs-review', 'Unmatched', 'NEW', 'Amount Variance', 'Dismissed'];
 
 async function getBillsWithAliases(selectedMonth) {
   const bills = await getLedgerBills({ selectedMonth });
@@ -335,7 +337,7 @@ async function completeReconciliation(formData) {
   const rows = await supabaseRequest(`ledger_statement_transactions?select=*&import_id=eq.${encodeURIComponent(importId)}`);
   if (!rows.length) redirect(`/reconcile?import=${importId}&notice=This+statement+has+no+parsed+transactions.`);
 
-  const unresolved = rows.filter((row) => ['NEW', 'Unmatched', 'Amount Variance'].includes(row.match_status));
+  const unresolved = rows.filter((row) => REVIEW_STATUSES.includes(row.match_status));
   if (unresolved.length) {
     redirect(`/reconcile?import=${importId}&notice=Resolve+${unresolved.length}+review+item${unresolved.length === 1 ? '' : 's'}+before+completing+reconciliation.`);
   }
@@ -424,13 +426,25 @@ function uniqueBillOccurrences(rows) {
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
+  }).sort((a, b) => {
+    const payee = String(a.payee ?? '').localeCompare(String(b.payee ?? ''), undefined, { sensitivity: 'base' });
+    if (payee !== 0) return payee;
+    return String(a.nextDue ?? '').localeCompare(String(b.nextDue ?? ''));
   });
+}
+
+function matchesStatusFilter(row, filter) {
+  if (filter === 'all') return true;
+  if (filter === 'needs-review') return REVIEW_STATUSES.includes(row.match_status);
+  return row.match_status === filter;
 }
 
 export default async function ReconcilePage({ searchParams }) {
   const params = await searchParams;
   const importId = String(params?.import ?? '');
   const viewedMonth = normalizeLedgerMonth(params?.month);
+  const requestedStatusFilter = String(params?.matchStatus ?? 'all');
+  const matchStatusFilter = STATUS_FILTERS.includes(requestedStatusFilter) ? requestedStatusFilter : 'all';
   let item = null;
   let rows = [];
   let billOptions = [];
@@ -461,7 +475,8 @@ export default async function ReconcilePage({ searchParams }) {
     </form>;
   };
 
-  const unresolvedCount = rows.filter((row) => ['NEW', 'Unmatched', 'Amount Variance'].includes(row.match_status)).length;
+  const unresolvedCount = rows.filter((row) => REVIEW_STATUSES.includes(row.match_status)).length;
+  const visibleRows = rows.filter((row) => matchesStatusFilter(row, matchStatusFilter));
 
   return <>
     <p className="eyebrow">Statement reconciliation</p>
@@ -479,18 +494,25 @@ export default async function ReconcilePage({ searchParams }) {
         <article><span>Status</span><strong>{item.status}</strong><small>{item.source_name}</small></article>
       </section>
 
-      {undoAction && <form action={undoLastReconciliationAction} className="inline-form"><input type="hidden" name="importId" value={item.id}/><button type="submit" className="ghost">Undo Last Action</button></form>}
+      {undoAction && <form action={undoLastReconciliationAction} className="undo-action-form"><input type="hidden" name="importId" value={item.id}/><button type="submit" className="undo-prominent">Undo Last Action</button></form>}
 
       <section className="panel">
         <header><strong>Review transactions</strong><span>{rows.length} posted debits · {unresolvedCount} need review</span></header>
+        <form method="get" className="reconcile-status-filter" aria-label="Reconciliation match status filter">
+          <input type="hidden" name="import" value={item.id}/>
+          <label>Match Status<select name="matchStatus" defaultValue={matchStatusFilter}><option value="all">All statuses</option><option value="Matched">Matched</option><option value="needs-review">Needs Review</option><option value="Unmatched">Unmatched</option><option value="NEW">NEW</option><option value="Amount Variance">Amount Variance</option><option value="Dismissed">Dismissed</option></select></label>
+          <button type="submit">Apply Filter</button>
+          <Link className="button ghost" href={`/reconcile?import=${encodeURIComponent(item.id)}`}>Clear</Link>
+          <span>{visibleRows.length} of {rows.length} transactions</span>
+        </form>
         <div className="table-wrap"><table className="reconciliation-table"><thead><tr><th>Bill / Payee</th><th>Expected Amount</th><th>Statement Amount</th><th>Payment Date</th><th>Match Status</th><th>Review / Action</th></tr></thead><tbody>
-          {rows.map((row) => <tr key={row.id}>
+          {visibleRows.map((row) => <tr key={row.id}>
             <td><b>{row.raw_description}</b></td>
             <td>{row.expected_amount == null ? '—' : money.format(row.expected_amount)}</td>
             <td>{money.format(row.amount)}</td>
             <td>{row.transaction_date}</td>
             <td><span className={`status ${row.match_status.toLowerCase().replace(/\s/g,'-')}`}>{row.match_status}</span></td>
-            <td>{row.match_status === 'Dismissed' ? (row.decision_note ?? 'Excluded') : <div className="inline-payment">{reviewEditor(row)}{row.match_status === 'NEW' && <form action={resolveTransaction} className="inline-form"><input type="hidden" name="id" value={row.id}/><input type="hidden" name="importId" value={item.id}/><input type="hidden" name="decision" value="approve-new"/><label>Bill name<input name="billName" defaultValue={row.raw_description} required/></label><label>Category<input name="category" required/></label><label>Account<input name="account" placeholder="TCU or TCUB" required/></label><button type="submit">Approve NEW Bill</button></form>}</div>}</td>
+            <td>{row.match_status === 'Dismissed' ? (row.decision_note ?? 'Excluded') : <div className="inline-payment">{reviewEditor(row)}{REVIEW_STATUSES.includes(row.match_status) && <form action={resolveTransaction} className="inline-form add-from-review"><input type="hidden" name="id" value={row.id}/><input type="hidden" name="importId" value={item.id}/><input type="hidden" name="decision" value="approve-new"/><label>Bill name<input name="billName" defaultValue={row.raw_description} required/></label><label>Category<input name="category" required/></label><label>Account<input name="account" placeholder="TCU / TCUB / CAPITAL ONE" required/></label><button type="submit">Add New Bill &amp; Match</button></form>}</div>}</td>
           </tr>)}
         </tbody></table></div>
       </section>
