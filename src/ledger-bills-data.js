@@ -135,7 +135,6 @@ export function buildLedgerRows(bills, occurrences, payments, { selectedMonth, a
       fundingAccount: payment.funding_account,
       notes: payment.notes,
       occurrenceId: payment.occurrence_id ?? null,
-      statementTransactionId: payment.statement_transaction_id ?? null,
     };
     if (payment.occurrence_id) {
       const list = paymentsByOccurrence.get(payment.occurrence_id) ?? [];
@@ -215,7 +214,7 @@ export async function getLedgerBills({ selectedMonth, asOf = new Date() } = {}) 
   const [bills, occurrences, payments] = await Promise.all([
     supabaseRequest(`ledger_bills?select=id,bill_name,bill_type,category,account,budget,frequency,due_day,recurrence_anchor,start_month,notes,is_active,archived_at&start_month=lte.${month}&order=bill_name.asc`),
     supabaseRequest(`ledger_bill_months?select=id,bill_id,month,occurrence_budget_amount,actual_amount,due_date,installment_key,migration_incomplete&month=eq.${month}&order=due_date.asc`),
-    supabaseRequest(`ledger_bill_payments?select=id,bill_id,occurrence_id,amount,payment_date,funding_account,notes,statement_transaction_id&payment_month=eq.${month}&order=payment_date.asc`),
+    supabaseRequest(`ledger_bill_payments?select=id,bill_id,occurrence_id,amount,payment_date,funding_account,notes&payment_month=eq.${month}&order=payment_date.asc`),
   ]);
   return buildLedgerRows(bills, occurrences, payments, { selectedMonth: normalized, asOf });
 }
