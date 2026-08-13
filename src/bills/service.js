@@ -28,7 +28,7 @@ function validateBillIdentity({ id, month, name, account, category, dueDate, req
   if (!String(name ?? '').trim() || !String(account ?? '').trim()) throw new Error('Bill name and Account are required.');
   if (requireCategory && !String(category ?? '').trim()) throw new Error('Category is required.');
   if (validateCategory && category && invalidBillCategory(category)) throw new Error('Business and Personal are Types, not Categories. Choose a bill category.');
-  if (!validDate(dueDate)) throw new Error('A valid Next Due date is required.');
+  if (!validDate(dueDate)) throw new Error('A valid Due Date is required.');
 }
 
 function validateUpdatedCategory(category, currentCategory) {
@@ -112,12 +112,18 @@ export async function updateBill(input, repository = billsRepository) {
   validateUpdatedCategory(category, master.category);
 
   const billType = validateBillType(account, requestedType);
+  const masterBudget = master.budget === null || master.budget === undefined ? null : Number(master.budget);
+  const dueDay = Number(dueDate.slice(8, 10));
+  const recurrenceAnchor = frequency === 'bi-weekly' ? dueDate : null;
   const masterPatch = {};
   if (name !== master.bill_name) masterPatch.bill_name = name;
   if (billType !== master.bill_type) masterPatch.bill_type = billType;
   if (category && category !== master.category) masterPatch.category = category;
   if (account !== master.account) masterPatch.account = account;
   if (frequency && frequency !== master.frequency) masterPatch.frequency = frequency;
+  if (budget !== masterBudget) masterPatch.budget = budget;
+  if (dueDay !== Number(master.due_day)) masterPatch.due_day = dueDay;
+  if (recurrenceAnchor !== (master.recurrence_anchor ?? null)) masterPatch.recurrence_anchor = recurrenceAnchor;
   await repository.updateMasterBill(id, masterPatch);
 
   let occurrence = await repository.getOccurrence({
@@ -140,15 +146,11 @@ export async function updateBill(input, repository = billsRepository) {
     });
     if (!occurrence?.id) throw new Error('Bill occurrence creation was not confirmed by the database.');
   } else {
-    const currentBudget = occurrence.occurrence_budget_amount == null ? null : Number(occurrence.occurrence_budget_amount);
     const currentActual = occurrence.actual_amount == null ? null : Number(occurrence.actual_amount);
     const occurrencePatch = {};
-    if (budget !== currentBudget) occurrencePatch.occurrence_budget_amount = budget;
+    // Actual is intentionally month-specific. Budget and Due Date are master-level
+    // fields and are not written back into historical monthly occurrence snapshots.
     if (actualAmount !== currentActual) occurrencePatch.actual_amount = actualAmount;
-    if (dueDate !== occurrence.due_date) {
-      occurrencePatch.due_date = dueDate;
-      occurrencePatch.installment_key = dueDate;
-    }
     if (Object.keys(occurrencePatch).length) {
       occurrencePatch.migration_incomplete = false;
       await repository.updateOccurrence({ billId: id, occurrenceId: occurrence.id, month }, occurrencePatch);
