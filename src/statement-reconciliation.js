@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 
 const MONTHS = Object.fromEntries(['january','february','march','april','may','june','july','august','september','october','november','december'].map((name, i) => [name, i + 1]));
 const EXCLUDED = /\b(restaurant|cafe|coffee|starbucks|mcdonald|wendy|gas|fuel|shell|quiktrip|walmart|target|cash app|venmo|zelle)\b/i;
-const RECURRING_HINT = /\b(payment|autopay|insurance|utility|water|mobile|wireless|credit|card|loan|mortgage|property|life)\b/i;
+const RECURRING_HINT = /\b(payment|autopay|insurance|utility|water|mobile|wireless|credit|card|loan|mortgage|property|life|affirm|afterpay)\b/i;
 const cents = (value) => Math.round(Number(value ?? 0) * 100);
 
 export function monthFromDate(value) { return value ? String(value).slice(0, 7) : null; }
@@ -24,7 +24,14 @@ export function detectStatementPeriod(text) {
 }
 
 export function normalizePayee(value) {
-  return String(value ?? '').toLowerCase().replace(/\b(pos|debit|ach|withdrawal|payment|autopay|online|recurring|purchase)\b/g, ' ').replace(/[#*]\S+/g, ' ').replace(/[^a-z0-9]+/g, ' ').trim();
+  return String(value ?? '')
+    .replace(/([a-z])([A-Z])/g, '$1 $2')
+    .toLowerCase()
+    .replace(/\b(pos|debit|ach|withdrawal|payment|autopay|online|recurring|purchase|transaction|checkcard)\b/g, ' ')
+    .replace(/[#*]\S+/g, ' ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 export function extractTransactions(text, year = new Date().getUTCFullYear()) {
@@ -40,29 +47,94 @@ export function extractTransactions(text, year = new Date().getUTCFullYear()) {
   return rows;
 }
 
-function similarity(left, right) {
+function editSimilarity(left, right) {
   if (!left || !right) return 0;
-  if (left.includes(right) || right.includes(left)) return 0.9;
-  const a = new Set(left.split(' ')); const b = new Set(right.split(' '));
-  const overlap = [...a].filter((word) => b.has(word)).length;
-  return overlap / Math.max(a.size, b.size);
+  const a = left.replace(/\s/g, '');
+  const b = right.replace(/\s/g, '');
+  const rows = Array.from({ length: a.length + 1 }, (_, index) => [index]);
+  rows[0] = Array.from({ length: b.length + 1 }, (_, index) => index);
+  for (let i = 1; i <= a.length; i += 1) {
+    for (let j = 1; j <= b.length; j += 1) {
+      rows[i][j] = Math.min(
+        rows[i - 1][j] + 1,
+        rows[i][j - 1] + 1,
+        rows[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1),
+      );
+    }
+  }
+  return 1 - rows[a.length][b.length] / Math.max(a.length, b.length, 1);
 }
 
-export function reconcileTransactions(transactions, bills, { amountTolerance = 5, dateWindowDays = 14 } = {}) {
+function similarity(left, right) {
+  if (!left || !right) return 0;
+  if (left === right) return 1;
+  if (left.includes(right) || right.includes(left)) return 0.93;
+  const a = new Set(left.split(' ').filter(Boolean));
+  const b = new Set(right.split(' ').filter(Boolean));
+  const overlap = [...a].filter((word) => b.has(word)).length / Math.max(a.size, b.size, 1);
+  return Math.max(overlap, editSimilarity(left, right));
+}
+
+function aliasDetails(alias) {
+  if (typeof alias === 'string') return { value: alias, amountHint: null };
+  return { value: alias?.value ?? alias?.alias ?? '', amountHint: alias?.amountHint ?? alias?.amount_hint ?? null };
+}
+
+function scoreAmount(amount, expected, tolerance) {
+  if (expected === null || expected === undefined || !Number.isFinite(Number(expected))) return { score: 0, difference: null, exact: false };
+  const difference = Math.abs(Number(amount) - Number(expected));
+  if (cents(amount) === cents(expected)) return { score: 0.45, difference, exact: true };
+  if (difference <= 1) return { score: 0.35, difference, exact: false };
+  if (difference <= tolerance) return { score: 0.25, difference, exact: false };
+  const relative = difference / Math.max(Math.abs(Number(expected)), 25);
+  return { score: relative <= 0.1 ? 0.08 : 0, difference, exact: false };
+}
+
+export function reconcileTransactions(transactions, bills, { amountTolerance = 5, dateWindowDays = 14, ambiguityMargin = 0.12 } = {}) {
   return transactions.map((transaction) => {
     if (EXCLUDED.test(transaction.rawDescription)) return { ...transaction, status: 'Unmatched', reason: 'Discretionary or person-to-person transaction' };
     const candidates = bills.map((bill) => {
-      const names = [bill.payee, bill.billName, ...(bill.aliases ?? [])].map(normalizePayee);
-      const nameScore = Math.max(...names.map((name) => similarity(transaction.normalizedPayee, name)));
+      const baseNames = [bill.payee, bill.billName].filter(Boolean).map((value) => ({ value, amountHint: null, alias: false }));
+      const aliasNames = (bill.aliases ?? []).map(aliasDetails).map((entry) => ({ ...entry, alias: true }));
+      const names = [...baseNames, ...aliasNames];
+      const nameMatches = names.map((entry) => {
+        const normalized = normalizePayee(entry.value);
+        const nameScore = similarity(transaction.normalizedPayee, normalized);
+        const exactAlias = entry.alias && normalized === transaction.normalizedPayee;
+        const aliasAmount = scoreAmount(transaction.amount, entry.amountHint, amountTolerance);
+        return { nameScore, exactAlias, aliasAmountScore: exactAlias ? aliasAmount.score : 0 };
+      });
+      const bestName = nameMatches.sort((a, b) => (b.nameScore + b.aliasAmountScore) - (a.nameScore + a.aliasAmountScore))[0] ?? { nameScore: 0, exactAlias: false, aliasAmountScore: 0 };
       const expected = bill.actualAmount ?? bill.budget;
-      const amountDifference = expected == null ? null : Math.abs(transaction.amount - Number(expected));
+      const amount = scoreAmount(transaction.amount, expected, amountTolerance);
       const dueDifference = bill.nextDue ? Math.abs((new Date(`${transaction.date}T00:00:00Z`) - new Date(`${bill.nextDue}T00:00:00Z`)) / 86400000) : null;
+      const dateScore = dueDifference != null && dueDifference <= dateWindowDays ? 0.1 : 0;
       const accountScore = !bill.account || !transaction.account || bill.account === transaction.account ? 0.05 : -0.15;
-      const score = nameScore + (amountDifference != null && amountDifference <= amountTolerance ? 0.2 : 0) + (dueDifference != null && dueDifference <= dateWindowDays ? 0.1 : 0) + accountScore;
-      return { bill, score, amountDifference };
+      const score = bestName.nameScore + bestName.aliasAmountScore + amount.score + dateScore + accountScore;
+      return { bill, score, amountDifference: amount.difference, exactAmount: amount.exact, nameScore: bestName.nameScore, exactAlias: bestName.exactAlias };
     }).sort((a, b) => b.score - a.score);
+
     const best = candidates[0];
-    if (best?.score >= 0.85) return { ...transaction, billId: best.bill.id, occurrenceId: best.bill.occurrenceId, expectedAmount: best.bill.actualAmount ?? best.bill.budget, status: best.amountDifference != null && best.amountDifference > amountTolerance ? 'Amount Variance' : 'Matched', confidence: best.score };
+    const second = candidates[1];
+    const margin = best && second ? best.score - second.score : Number.POSITIVE_INFINITY;
+    const strongAmountDisambiguation = Boolean(best?.exactAmount && best?.nameScore >= 0.75 && (!second?.exactAmount || best.score > second.score));
+    const reliable = best?.score >= 0.9 && (margin >= ambiguityMargin || strongAmountDisambiguation || best.exactAlias);
+
+    if (reliable) {
+      return {
+        ...transaction,
+        billId: best.bill.id,
+        occurrenceId: best.bill.occurrenceId,
+        expectedAmount: best.bill.actualAmount ?? best.bill.budget,
+        status: best.amountDifference != null && best.amountDifference > amountTolerance ? 'Amount Variance' : 'Matched',
+        confidence: Math.min(best.score, 1.9999),
+        reason: best.exactAlias ? 'Matched using a learned merchant alias.' : strongAmountDisambiguation ? 'Matched using merchant similarity and exact amount.' : null,
+      };
+    }
+
+    if (best?.score >= 0.9 && margin < ambiguityMargin) {
+      return { ...transaction, status: 'Unmatched', confidence: Math.min(best.score, 1.9999), reason: 'Multiple Master Bills are plausible; review is required.' };
+    }
     if (RECURRING_HINT.test(transaction.rawDescription)) return { ...transaction, status: 'NEW', reason: 'Likely recurring bill; approval required' };
     return { ...transaction, status: 'Unmatched', reason: 'No reliable Master Bill match' };
   });
