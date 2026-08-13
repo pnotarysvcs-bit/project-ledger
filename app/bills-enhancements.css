@@ -22,3 +22,17 @@
 .inline-form label { display: grid; gap: 6px; color: #bac4cc; font-size: 12px; }
 .payment-row { display: grid; grid-template-columns: 120px 150px minmax(130px, 1fr) minmax(160px, 2fr) auto auto; gap: 8px; align-items: center; }
 @media (max-width: 900px) { .payment-row { grid-template-columns: 1fr 1fr; } }
+
+/* Reconciliation uses a six-column transaction schema. On phones the later
+   generic Bills card rules relabel every panel table, so explicitly restore
+   the statement-specific labels for the panel immediately following the
+   reconciliation summary. */
+@media (max-width: 760px) {
+  .summary + .panel table td:nth-child(1)::before { content: 'Payee'; }
+  .summary + .panel table td:nth-child(2)::before { content: 'Expected'; }
+  .summary + .panel table td:nth-child(3)::before { content: 'Statement Amount'; }
+  .summary + .panel table td:nth-child(4)::before { content: 'Payment Date'; }
+  .summary + .panel table td:nth-child(5)::before { content: 'Match Status'; }
+  .summary + .panel table td:nth-child(6)::before { content: 'Review / Action'; }
+  .summary + .panel table td:nth-child(n+7)::before { content: none; }
+}
