@@ -19,10 +19,11 @@ test('upcoming unpaid bills have no Future status label', () => {
   assert.equal(classifyBillStatus({ effectiveAmount: 100, submitted: 0, dueDate: '2026-08-20' }, asOf), '');
 });
 
-test('status precedence preserves submitted, overdue, and partial semantics', () => {
+test('status precedence preserves submitted, partial, overdue, and incomplete semantics', () => {
   const asOf = new Date('2026-08-11T12:00:00Z');
   assert.equal(classifyBillStatus({ effectiveAmount: 100, submitted: 100, dueDate: '2026-08-01' }, asOf), 'submitted');
-  assert.equal(classifyBillStatus({ effectiveAmount: 100, submitted: 25, dueDate: '2026-08-01' }, asOf), 'overdue');
+  assert.equal(classifyBillStatus({ effectiveAmount: 100, submitted: 25, dueDate: '2026-08-01' }, asOf), 'partial');
+  assert.equal(classifyBillStatus({ effectiveAmount: 100, submitted: 0, dueDate: '2026-08-01' }, asOf), 'overdue');
   assert.equal(classifyBillStatus({ effectiveAmount: 100, submitted: 25, dueDate: '2026-08-20' }, asOf), 'partial');
   assert.equal(classifyBillStatus({ effectiveAmount: null, submitted: 0, dueDate: '2026-08-01' }, asOf), 'incomplete');
 });
@@ -36,39 +37,24 @@ test('bill occurrences sort by Next Due then Bill Name', () => {
   assert.deepEqual(sortBillOccurrences(rows).map((row) => row.payee), ['Beta', 'Zulu', 'Alpha']);
 });
 
-test('section order is always Personal, Business, Streaming', () => {
+test('section order includes Capital One and groups it by account rather than stale bill type', () => {
   const rows = [
-    { payee: 'Netflix', type: 'Streaming', nextDue: '2026-08-01' },
-    { payee: 'FedEx', type: 'Personal', nextDue: '2026-08-03' },
-    { payee: 'Square', type: 'Business', nextDue: '2026-08-02' },
+    { payee: 'Netflix', type: 'Streaming', account: 'CAPITAL ONE', nextDue: '2026-08-01' },
+    { payee: 'Amazon', type: 'Personal', account: 'CAPITAL ONE', nextDue: '2026-08-03' },
+    { payee: 'FedEx', type: 'Personal', account: 'TCU', nextDue: '2026-08-03' },
+    { payee: 'Square', type: 'Business', account: 'TCUB', nextDue: '2026-08-02' },
   ];
-  assert.deepEqual(groupBillsByType(rows).map(({ type }) => type), ['Personal', 'Business', 'Streaming']);
+  const groups = groupBillsByType(rows);
+  assert.deepEqual(groups.map(({ type }) => type), ['Personal', 'Capital One', 'Business']);
+  assert.deepEqual(groups.find(({ type }) => type === 'Capital One').bills.map((bill) => bill.payee), ['Netflix', 'Amazon']);
 });
 
 test('multiple payments aggregate into Submitted without replacing Actual', () => {
-  const result = calculateOccurrenceAmounts({
-    budget: 150,
-    actualAmount: 100,
-    payments: [{ amount: 40 }, { amount: 60 }],
-  });
-  assert.deepEqual(result, {
-    effectiveAmount: 100,
-    submitted: 100,
-    remaining: 0,
-    credit: 0,
-  });
+  const result = calculateOccurrenceAmounts({ budget: 150, actualAmount: 100, payments: [{ amount: 40 }, { amount: 60 }] });
+  assert.deepEqual(result, { effectiveAmount: 100, submitted: 100, remaining: 0, credit: 0 });
 });
 
 test('overpayment creates credit and never negative remaining', () => {
-  const result = calculateOccurrenceAmounts({
-    budget: 100,
-    actualAmount: null,
-    payments: [{ amount: 125 }],
-  });
-  assert.deepEqual(result, {
-    effectiveAmount: 100,
-    submitted: 125,
-    remaining: 0,
-    credit: 25,
-  });
+  const result = calculateOccurrenceAmounts({ budget: 100, actualAmount: null, payments: [{ amount: 125 }] });
+  assert.deepEqual(result, { effectiveAmount: 100, submitted: 125, remaining: 0, credit: 25 });
 });
