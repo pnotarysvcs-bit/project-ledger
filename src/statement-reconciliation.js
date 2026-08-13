@@ -4,7 +4,8 @@ const MONTH_NAMES = ['january','february','march','april','may','june','july','a
 const MONTHS = Object.fromEntries(MONTH_NAMES.flatMap((name, i) => [[name, i + 1], [name.slice(0, 3), i + 1]]));
 const MONTH_ABBR = Object.fromEntries(MONTH_NAMES.flatMap((name, i) => [[name.slice(0, 3), i + 1], [name, i + 1]]));
 const MONTH_PATTERN = '(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)';
-const EXCLUDED = /\b(restaurant|cafe|coffee|starbucks|mcdonald|wendy|burger\s*king|gas|fuel|shell|quiktrip|walmart|target|cash app|cashapp|venmo|zelle)\b/i;
+const DINING_OR_FOOD = /\b(restaurant|restaurants|dining|diner|cafe|cafeteria|coffee|food|grill|bar\s*&?\s*grill|bistro|bakery|pizza|pizzeria|starbucks|mcdonald(?:'s)?|wendy(?:'s)?|burger\s*king|taco\s*bell|chipotle|panera|subway|doordash|door\s*dash|uber\s*eats|ubereats|grubhub|chick[-\s]*fil[-\s]*a|popeyes|kfc|sonic|ihop|denny(?:'s)?|applebee(?:'s)?|chili(?:'s)?|olive\s*garden)\b/i;
+const EXCLUDED = /\b(gas|fuel|shell|quiktrip|walmart|target|cash app|cashapp|venmo|zelle)\b/i;
 const RECURRING_HINT = /\b(payment|autopay|insurance|utility|water|mobile|wireless|credit|card|loan|mortgage|property|life|affirm|afterpay)\b/i;
 const NON_PURCHASE = /\b(payment|pymt|credit|refund|adjustment|deposit|interest\s+charge|fee\s+summary|rewards?)\b/i;
 const cents = (value) => Math.round(Number(value ?? 0) * 100);
@@ -72,7 +73,7 @@ export function extractTransactions(text, year = new Date().getUTCFullYear(), an
       if (!transactionMonth || !moneyTokens.length) continue;
       const firstMoney = moneyTokens[0];
       const rawDescription = remainder.slice(0, firstMoney.index).trim();
-      if (!rawDescription || NON_PURCHASE.test(rawDescription)) continue;
+      if (!rawDescription || NON_PURCHASE.test(rawDescription) || DINING_OR_FOOD.test(rawDescription)) continue;
       const parsed = parseMoneyToken(firstMoney[0]);
       if (!Number.isFinite(parsed) || parsed <= 0) continue;
       const transactionYear = nearestYearForMonth(transactionMonth, Number(year), Number(anchorMonth));
@@ -93,7 +94,7 @@ export function extractTransactions(text, year = new Date().getUTCFullYear(), an
     if (!moneyTokens.length) continue;
     const firstMoney = moneyTokens[0];
     const rawDescription = remainder.slice(0, firstMoney.index).trim();
-    if (!rawDescription || NON_PURCHASE.test(rawDescription)) continue;
+    if (!rawDescription || NON_PURCHASE.test(rawDescription) || DINING_OR_FOOD.test(rawDescription)) continue;
     const amount = Math.abs(parseMoneyToken(firstMoney[0]));
     if (!Number.isFinite(amount) || amount <= 0) continue;
 
