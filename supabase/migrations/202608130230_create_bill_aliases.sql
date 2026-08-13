@@ -23,15 +23,33 @@ set alias_raw = coalesce(alias_raw, alias),
     alias_normalized = coalesce(alias_normalized, normalized_alias)
 where alias_raw is null or alias_normalized is null;
 
+create or replace function public.sync_ledger_bill_alias_columns()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.alias_raw := coalesce(new.alias_raw, new.alias);
+  new.alias_normalized := coalesce(new.alias_normalized, new.normalized_alias);
+  new.alias := coalesce(new.alias, new.alias_raw);
+  new.normalized_alias := coalesce(new.normalized_alias, new.alias_normalized);
+  return new;
+end;
+$$;
+
+drop trigger if exists ledger_bill_aliases_sync_columns on public.ledger_bill_aliases;
+create trigger ledger_bill_aliases_sync_columns
+before insert or update on public.ledger_bill_aliases
+for each row execute function public.sync_ledger_bill_alias_columns();
+
 create index if not exists ledger_bill_aliases_bill_idx
   on public.ledger_bill_aliases(bill_id);
 
 create index if not exists ledger_bill_aliases_normalized_idx
   on public.ledger_bill_aliases(normalized_alias);
 
-create unique index if not exists ledger_bill_aliases_alias_normalized_bill_key
-  on public.ledger_bill_aliases(alias_normalized, bill_id)
-  where alias_normalized is not null;
+drop index if exists public.ledger_bill_aliases_alias_normalized_bill_key;
+create unique index ledger_bill_aliases_alias_normalized_bill_key
+  on public.ledger_bill_aliases(alias_normalized, bill_id);
 
 create index if not exists ledger_bill_aliases_alias_normalized_idx
   on public.ledger_bill_aliases(alias_normalized);
