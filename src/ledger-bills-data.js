@@ -87,10 +87,12 @@ export async function ensureLedgerOccurrencesForMonth(selectedMonth) {
     supabaseRequest(`ledger_bill_months?select=id,bill_id,due_date&month=eq.${month}`),
   ]);
   const existingKeys = new Set(existing.filter((row) => row.due_date).map((row) => `${row.bill_id}:${row.due_date}`));
+  const existingBillIds = new Set(existing.map((row) => row.bill_id));
   const creates = [];
 
   for (const bill of expectedBills(bills, normalized)) {
     for (const dueDate of dueDatesForBill(bill, normalized)) {
+      if (bill.frequency !== 'bi-weekly' && existingBillIds.has(bill.id)) continue;
       const key = `${bill.id}:${dueDate}`;
       if (existingKeys.has(key)) continue;
       creates.push({
@@ -104,6 +106,7 @@ export async function ensureLedgerOccurrencesForMonth(selectedMonth) {
         migration_incomplete: false,
       });
       existingKeys.add(key);
+      existingBillIds.add(bill.id);
     }
   }
 
@@ -150,27 +153,23 @@ export function buildLedgerRows(bills, occurrences, payments, { selectedMonth, a
     const persisted = occurrencesByBill.get(bill.id) ?? [];
     const expectedDates = dueDatesForBill(bill, normalized);
     const occurrenceMap = new Map(persisted.filter((row) => row.due_date).map((row) => [row.due_date, row]));
-    const dates = bill.frequency === 'bi-weekly'
-      ? [...new Set([...expectedDates, ...persisted.map((row) => row.due_date).filter(Boolean)])].sort()
-      : [persisted[0]?.due_date || expectedDates[0]];
+    const dates = expectedDates;
 
-    for (const dueDate of dates) {
-      const occurrence = occurrenceMap.get(dueDate) ?? (bill.frequency === 'bi-weekly' ? null : persisted[0]);
+    for (const [dateIndex, dueDate] of dates.entries()) {
+      // Master schedule is authoritative. Exact persisted occurrences are preferred;
+      // otherwise retain the existing occurrence identity by ordinal so Actuals,
+      // payments, and statement provenance remain attached after a master Due Date edit.
+      const occurrence = occurrenceMap.get(dueDate) ?? persisted[dateIndex] ?? null;
       const historicalMissing = normalized < normalizeLedgerMonth() && !occurrence;
       const migrationIncomplete = historicalMissing || occurrence?.migration_incomplete === true;
-      const occurrenceBudget = occurrence
-        ? (occurrence.occurrence_budget_amount === null || occurrence.occurrence_budget_amount === undefined
-          ? null
-          : Number(occurrence.occurrence_budget_amount))
-        : (historicalMissing ? null : masterBudget);
       const actualAmount = occurrence?.actual_amount === null || occurrence?.actual_amount === undefined
         ? null
         : Number(occurrence.actual_amount);
       const occurrencePayments = occurrence ? (paymentsByOccurrence.get(occurrence.id) ?? []) : [];
       const legacyPayments = bill.frequency === 'bi-weekly' ? [] : (legacyPaymentsByBill.get(bill.id) ?? []);
       const transactions = [...occurrencePayments, ...legacyPayments].sort((a, b) => a.paymentDate.localeCompare(b.paymentDate));
-      const amounts = calculateOccurrenceAmounts({ budget: occurrenceBudget, actualAmount, payments: transactions });
-      const nextDue = occurrence?.due_date || dueDate;
+      const amounts = calculateOccurrenceAmounts({ budget: masterBudget, actualAmount, payments: transactions });
+      const nextDue = dueDate;
 
       rows.push({
         id: bill.id,
@@ -182,7 +181,7 @@ export function buildLedgerRows(bills, occurrences, payments, { selectedMonth, a
         category: bill.category,
         account: bill.account,
         masterBudget,
-        budget: occurrenceBudget,
+        budget: masterBudget,
         actualAmount,
         effectiveAmount: amounts.effectiveAmount,
         migrationIncomplete: migrationIncomplete || (bill.frequency === 'bi-weekly' && (legacyPaymentsByBill.get(bill.id)?.length ?? 0) > 0),
