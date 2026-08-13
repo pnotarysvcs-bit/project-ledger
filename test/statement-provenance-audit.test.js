@@ -23,3 +23,10 @@ test('statement-created payments preserve transaction provenance', () => {
   assert.match(reconcilePage, /Some matched statement transactions are not fully reconciled/);
   assert.match(reconcilePage, /A statement payment could not be confirmed/);
 });
+
+test('complete reconciliation keeps planned and newly created payment ids in separate scopes', () => {
+  assert.match(reconcilePage, /for \(const \{ row, action, paymentId \} of actions\)/);
+  assert.match(reconcilePage, /const createdPaymentId = payment\?\.\[0\]\?\.id/);
+  assert.match(reconcilePage, /payment_id: createdPaymentId/);
+  assert.doesNotMatch(reconcilePage, /const paymentId = payment\?\.\[0\]\?\.id/);
+});
