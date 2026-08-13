@@ -35,18 +35,17 @@ button.undo-prominent:hover { background: #ffd75e; }
 .add-from-review button:hover { background: #65b5ff; }
 .reconciliation-table select[name="billOccurrence"] { min-width: 315px; }
 
-/* Reconciliation uses a six-column transaction schema. On phones the later
-   generic Bills card rules relabel every panel table, so explicitly restore
-   the statement-specific labels for the panel immediately following the
-   reconciliation summary. */
+/* Reconciliation uses a six-column transaction schema. On phones the generic
+   Bills card rules relabel table cells, so scope the statement labels directly
+   to the reconciliation table rather than relying on panel adjacency. */
 @media (max-width: 760px) {
-  .summary + .panel table td:nth-child(1)::before { content: 'Payee'; }
-  .summary + .panel table td:nth-child(2)::before { content: 'Expected'; }
-  .summary + .panel table td:nth-child(3)::before { content: 'Statement Amount'; }
-  .summary + .panel table td:nth-child(4)::before { content: 'Payment Date'; }
-  .summary + .panel table td:nth-child(5)::before { content: 'Match Status'; }
-  .summary + .panel table td:nth-child(6)::before { content: 'Review / Action'; }
-  .summary + .panel table td:nth-child(n+7)::before { content: none; }
+  .reconciliation-table td:nth-child(1)::before { content: 'Payee'; }
+  .reconciliation-table td:nth-child(2)::before { content: 'Expected'; }
+  .reconciliation-table td:nth-child(3)::before { content: 'Statement Amount'; }
+  .reconciliation-table td:nth-child(4)::before { content: 'Payment Date'; }
+  .reconciliation-table td:nth-child(5)::before { content: 'Match Status'; }
+  .reconciliation-table td:nth-child(6)::before { content: 'Review / Action'; }
+  .reconciliation-table td:nth-child(n+7)::before { content: none; }
   .reconcile-status-filter span { width: 100%; margin-left: 0; }
   .reconciliation-table select[name="billOccurrence"] { min-width: 240px; }
 }
