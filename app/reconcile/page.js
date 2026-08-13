@@ -39,6 +39,32 @@ async function rememberAlias(transaction, billId) {
   });
 }
 
+function reconciliationBeforeState(transaction) {
+  return {
+    amount: Number(transaction.amount),
+    match_status: transaction.match_status,
+    bill_id: transaction.bill_id ?? null,
+    occurrence_id: transaction.occurrence_id ?? null,
+    expected_amount: transaction.expected_amount ?? null,
+    confidence: transaction.confidence ?? null,
+    decision_note: transaction.decision_note ?? null,
+    resolved_at: transaction.resolved_at ?? null,
+    payment_id: transaction.payment_id ?? null,
+  };
+}
+
+async function recordReconciliationAction(transaction, importId, actionType) {
+  await supabaseRequest('ledger_reconciliation_actions', {
+    method: 'POST',
+    body: {
+      import_id: importId,
+      transaction_id: transaction.id,
+      action_type: actionType,
+      before_state: reconciliationBeforeState(transaction),
+    },
+  });
+}
+
 async function uploadStatement(formData) {
   'use server';
   const file = formData.get('statement');
@@ -108,19 +134,20 @@ async function resolveTransaction(formData) {
   const id = String(formData.get('id'));
   const importId = String(formData.get('importId'));
   const decision = String(formData.get('decision'));
+  const transaction = (await supabaseRequest(`ledger_statement_transactions?select=*&id=eq.${encodeURIComponent(id)}&import_id=eq.${encodeURIComponent(importId)}`))[0];
+  const imported = (await supabaseRequest(`ledger_statement_imports?select=effective_month,status&id=eq.${encodeURIComponent(importId)}`))[0];
+  if (!transaction || !imported) throw new Error('The statement transaction could not be found.');
+  if (imported.status === 'completed') redirect(`/reconcile?import=${importId}&notice=Completed+reconciliation+cannot+be+edited.`);
 
   if (decision === 'dismiss') {
+    await recordReconciliationAction(transaction, importId, 'dismiss');
     await supabaseRequest(`ledger_statement_transactions?id=eq.${encodeURIComponent(id)}&import_id=eq.${encodeURIComponent(importId)}`, {
       method: 'PATCH',
       body: { match_status: 'Dismissed', decision_note: 'Dismissed by user', resolved_at: new Date().toISOString() },
     });
     revalidatePath('/reconcile');
-    redirect(`/reconcile?import=${importId}`);
+    redirect(`/reconcile?import=${importId}&notice=Review+saved.+Undo+Last+Action+is+available.`);
   }
-
-  const transaction = (await supabaseRequest(`ledger_statement_transactions?select=*&id=eq.${encodeURIComponent(id)}&import_id=eq.${encodeURIComponent(importId)}`))[0];
-  const imported = (await supabaseRequest(`ledger_statement_imports?select=effective_month&id=eq.${encodeURIComponent(importId)}`))[0];
-  if (!transaction || !imported) throw new Error('The statement transaction could not be found.');
 
   if (decision === 'edit-review') {
     const correctedAmount = Number(formData.get('correctedAmount'));
@@ -128,6 +155,7 @@ async function resolveTransaction(formData) {
     const disposition = String(formData.get('reviewDisposition') ?? 'match');
 
     if (disposition === 'exclude') {
+      await recordReconciliationAction(transaction, importId, 'edit-review');
       await supabaseRequest(`ledger_statement_transactions?id=eq.${encodeURIComponent(id)}&import_id=eq.${encodeURIComponent(importId)}`, {
         method: 'PATCH',
         body: {
@@ -142,7 +170,7 @@ async function resolveTransaction(formData) {
         },
       });
       revalidatePath('/reconcile');
-      redirect(`/reconcile?import=${importId}&notice=Review+saved.`);
+      redirect(`/reconcile?import=${importId}&notice=Review+saved.+Undo+Last+Action+is+available.`);
     }
 
     const selection = String(formData.get('billOccurrence') ?? '');
@@ -161,6 +189,7 @@ async function resolveTransaction(formData) {
         ? 'Amount variance explicitly approved by user.'
         : 'Statement amount and Master Bill match confirmed by user.';
 
+    await recordReconciliationAction(transaction, importId, 'edit-review');
     await supabaseRequest(`ledger_statement_transactions?id=eq.${encodeURIComponent(id)}&import_id=eq.${encodeURIComponent(importId)}`, {
       method: 'PATCH',
       body: {
@@ -174,9 +203,8 @@ async function resolveTransaction(formData) {
         resolved_at: null,
       },
     });
-    if (matchStatus === 'Matched') await rememberAlias({ ...transaction, amount: correctedAmount }, bill.id);
     revalidatePath('/reconcile');
-    redirect(`/reconcile?import=${importId}&notice=Review+saved.`);
+    redirect(`/reconcile?import=${importId}&notice=Review+saved.+Undo+Last+Action+is+available.`);
   }
 
   if (decision === 'match-existing') {
@@ -189,6 +217,7 @@ async function resolveTransaction(formData) {
     const expected = bill.actualAmount ?? bill.budget;
     const difference = expected == null ? null : Math.abs(Number(transaction.amount) - Number(expected));
     const matchStatus = difference != null && difference > AMOUNT_TOLERANCE ? 'Amount Variance' : 'Matched';
+    await recordReconciliationAction(transaction, importId, 'match-existing');
     await supabaseRequest(`ledger_statement_transactions?id=eq.${encodeURIComponent(id)}&import_id=eq.${encodeURIComponent(importId)}`, {
       method: 'PATCH',
       body: {
@@ -199,11 +228,10 @@ async function resolveTransaction(formData) {
         confidence: 1,
         decision_note: matchStatus === 'Amount Variance'
           ? 'Matched to an existing Master Bill; amount variance requires explicit review before completion.'
-          : 'Matched to an existing Master Bill by user; merchant alias learned.',
+          : 'Matched to an existing Master Bill by user; merchant alias will be learned when reconciliation completes.',
         resolved_at: null,
       },
     });
-    if (matchStatus === 'Matched') await rememberAlias(transaction, bill.id);
   }
 
   if (decision === 'approve-new') {
@@ -258,6 +286,44 @@ async function resolveTransaction(formData) {
 
   revalidatePath('/reconcile');
   redirect(`/reconcile?import=${importId}`);
+}
+
+async function undoLastReconciliationAction(formData) {
+  'use server';
+  const importId = String(formData.get('importId'));
+  const imported = (await supabaseRequest(`ledger_statement_imports?select=id,status&id=eq.${encodeURIComponent(importId)}`))[0];
+  if (!imported) throw new Error('Reconciliation import not found.');
+  if (imported.status === 'completed') redirect(`/reconcile?import=${importId}&notice=Undo+is+not+available+after+reconciliation+completion.`);
+
+  const action = (await supabaseRequest(`ledger_reconciliation_actions?select=*&import_id=eq.${encodeURIComponent(importId)}&order=created_at.desc&limit=1`))[0];
+  if (!action || action.reversed_at) redirect(`/reconcile?import=${importId}&notice=There+is+no+eligible+last+action+to+undo.`);
+
+  const transaction = (await supabaseRequest(`ledger_statement_transactions?select=id,payment_id&id=eq.${encodeURIComponent(action.transaction_id)}&import_id=eq.${encodeURIComponent(importId)}`))[0];
+  if (!transaction) throw new Error('The statement transaction for Undo could not be found.');
+  if (transaction.payment_id) redirect(`/reconcile?import=${importId}&notice=Undo+is+not+available+after+a+payment+has+been+linked+or+created.`);
+
+  const before = action.before_state ?? {};
+  await supabaseRequest(`ledger_statement_transactions?id=eq.${encodeURIComponent(action.transaction_id)}&import_id=eq.${encodeURIComponent(importId)}`, {
+    method: 'PATCH',
+    body: {
+      amount: Number(before.amount),
+      match_status: before.match_status,
+      bill_id: before.bill_id ?? null,
+      occurrence_id: before.occurrence_id ?? null,
+      expected_amount: before.expected_amount ?? null,
+      confidence: before.confidence ?? null,
+      decision_note: before.decision_note ?? null,
+      resolved_at: before.resolved_at ?? null,
+      payment_id: before.payment_id ?? null,
+    },
+  });
+  await supabaseRequest(`ledger_reconciliation_actions?id=eq.${encodeURIComponent(action.id)}`, {
+    method: 'PATCH',
+    body: { reversed_at: new Date().toISOString() },
+  });
+
+  revalidatePath('/reconcile');
+  redirect(`/reconcile?import=${importId}&notice=Last+reconciliation+action+was+undone.`);
 }
 
 async function completeReconciliation(formData) {
@@ -338,6 +404,10 @@ async function completeReconciliation(formData) {
     redirect(`/reconcile?import=${importId}&notice=Resolve+${incomplete.length}+incomplete+matched+item${incomplete.length === 1 ? '' : 's'}+before+completion.`);
   }
 
+  for (const row of rows.filter((candidate) => candidate.match_status === 'Matched' && candidate.bill_id)) {
+    await rememberAlias(row, row.bill_id);
+  }
+
   await supabaseRequest(`ledger_statement_imports?id=eq.${encodeURIComponent(importId)}`, {
     method: 'PATCH',
     body: { status: 'completed', completed_at: resolvedAt },
@@ -364,11 +434,16 @@ export default async function ReconcilePage({ searchParams }) {
   let item = null;
   let rows = [];
   let billOptions = [];
+  let undoAction = null;
 
   if (importId) {
     item = (await supabaseRequest(`ledger_statement_imports?select=*&id=eq.${encodeURIComponent(importId)}`))[0] ?? null;
     rows = item ? await supabaseRequest(`ledger_statement_transactions?select=*&import_id=eq.${encodeURIComponent(importId)}&order=transaction_date.asc`) : [];
     if (item) billOptions = uniqueBillOccurrences(await getLedgerBills({ selectedMonth: item.effective_month.slice(0, 7) }));
+    if (item?.status !== 'completed') {
+      const latestAction = (await supabaseRequest(`ledger_reconciliation_actions?select=id,action_type,reversed_at,created_at&import_id=eq.${encodeURIComponent(importId)}&order=created_at.desc&limit=1`))[0] ?? null;
+      undoAction = latestAction && !latestAction.reversed_at ? latestAction : null;
+    }
   }
 
   const reviewEditor = (row) => {
@@ -403,6 +478,8 @@ export default async function ReconcilePage({ searchParams }) {
         <article><span>Reporting Month</span><strong>{item.effective_month.slice(0,7)}</strong><small>{item.override_month ? 'User override retained' : 'Detected period used'}</small></article>
         <article><span>Status</span><strong>{item.status}</strong><small>{item.source_name}</small></article>
       </section>
+
+      {undoAction && <form action={undoLastReconciliationAction} className="inline-form"><input type="hidden" name="importId" value={item.id}/><button type="submit" className="ghost">Undo Last Action</button></form>}
 
       <section className="panel">
         <header><strong>Review transactions</strong><span>{rows.length} posted debits · {unresolvedCount} need review</span></header>
