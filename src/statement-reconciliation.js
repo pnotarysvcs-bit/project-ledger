@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 
 const MONTHS = Object.fromEntries(['january','february','march','april','may','june','july','august','september','october','november','december'].map((name, i) => [name, i + 1]));
-const EXCLUDED = /\b(restaurant|cafe|coffee|starbucks|mcdonald|wendy|gas|fuel|shell|quiktrip|walmart|target|cash app|venmo|zelle)\b/i;
+const EXCLUDED = /\b(restaurant|cafe|coffee|starbucks|mcdonald|wendy|burger\s*king|gas|fuel|shell|quiktrip|walmart|target|cash app|cashapp|venmo|zelle)\b/i;
 const RECURRING_HINT = /\b(payment|autopay|insurance|utility|water|mobile|wireless|credit|card|loan|mortgage|property|life|affirm|afterpay)\b/i;
 const cents = (value) => Math.round(Number(value ?? 0) * 100);
 
@@ -34,15 +34,38 @@ export function normalizePayee(value) {
     .trim();
 }
 
+function parseMoneyToken(value) {
+  const text = String(value ?? '');
+  const negative = text.includes('-') || (text.startsWith('(') && text.endsWith(')'));
+  const amount = Number(text.replace(/[^0-9.]/g, ''));
+  return negative ? -amount : amount;
+}
+
 export function extractTransactions(text, year = new Date().getUTCFullYear()) {
   const rows = [];
   for (const line of String(text ?? '').split(/\r?\n/)) {
-    const match = line.trim().match(/^(?:(\d{4})[-\/])?(\d{1,2})[-\/](\d{1,2})\s+(.+?)\s+\(?-?\$?([\d,]+\.\d{2})\)?$/);
-    if (!match) continue;
-    const dateYear = match[1] ?? year;
-    const rawDescription = match[4].trim();
-    if (/deposit|credit|refund|interest/i.test(rawDescription)) continue;
-    rows.push({ date: `${dateYear}-${match[2].padStart(2, '0')}-${match[3].padStart(2, '0')}`, rawDescription, normalizedPayee: normalizePayee(rawDescription), amount: Number(match[5].replace(/,/g, '')) });
+    const dated = line.trim().match(/^(?:(\d{4})[-\/])?(\d{1,2})[-\/](\d{1,2})\s+(.+)$/);
+    if (!dated) continue;
+    const dateYear = dated[1] ?? year;
+    const remainder = dated[4].trim();
+    const moneyTokens = [...remainder.matchAll(/\(?-?\$?[\d,]+\.\d{2}\)?/g)];
+    if (!moneyTokens.length) continue;
+
+    // Bank statements commonly render: description | transaction amount | running balance.
+    // The transaction amount is the first monetary column after the description; the
+    // running balance, when present, must never be imported as the payment amount.
+    const firstMoney = moneyTokens[0];
+    const rawDescription = remainder.slice(0, firstMoney.index).trim();
+    if (!rawDescription || /deposit|credit|refund|interest/i.test(rawDescription)) continue;
+    const amount = Math.abs(parseMoneyToken(firstMoney[0]));
+    if (!Number.isFinite(amount) || amount <= 0) continue;
+
+    rows.push({
+      date: `${dateYear}-${dated[2].padStart(2, '0')}-${dated[3].padStart(2, '0')}`,
+      rawDescription,
+      normalizedPayee: normalizePayee(rawDescription),
+      amount,
+    });
   }
   return rows;
 }
@@ -90,6 +113,13 @@ function scoreAmount(amount, expected, tolerance) {
   return { score: relative <= 0.1 ? 0.08 : 0, difference, exact: false };
 }
 
+function materiallyDifferent(amount, expected, tolerance) {
+  if (expected === null || expected === undefined || !Number.isFinite(Number(expected))) return false;
+  const difference = Math.abs(Number(amount) - Number(expected));
+  const relative = difference / Math.max(Math.abs(Number(expected)), 1);
+  return difference > Math.max(tolerance * 3, 25) && relative > 0.35;
+}
+
 export function reconcileTransactions(transactions, bills, { amountTolerance = 5, dateWindowDays = 14, ambiguityMargin = 0.12 } = {}) {
   return transactions.map((transaction) => {
     if (EXCLUDED.test(transaction.rawDescription)) return { ...transaction, status: 'Unmatched', reason: 'Discretionary or person-to-person transaction' };
@@ -111,21 +141,34 @@ export function reconcileTransactions(transactions, bills, { amountTolerance = 5
       const dateScore = dueDifference != null && dueDifference <= dateWindowDays ? 0.1 : 0;
       const accountScore = !bill.account || !transaction.account || bill.account === transaction.account ? 0.05 : -0.15;
       const score = bestName.nameScore + bestName.aliasAmountScore + amount.score + dateScore + accountScore;
-      return { bill, score, amountDifference: amount.difference, exactAmount: amount.exact, nameScore: bestName.nameScore, exactAlias: bestName.exactAlias };
+      return { bill, score, amountDifference: amount.difference, exactAmount: amount.exact, nameScore: bestName.nameScore, exactAlias: bestName.exactAlias, expected };
     }).sort((a, b) => b.score - a.score);
 
     const best = candidates[0];
     const second = candidates[1];
     const margin = best && second ? best.score - second.score : Number.POSITIVE_INFINITY;
     const strongAmountDisambiguation = Boolean(best?.exactAmount && best?.nameScore >= 0.75 && (!second?.exactAmount || best.score > second.score));
-    const reliable = best?.score >= 0.9 && (margin >= ambiguityMargin || strongAmountDisambiguation || best.exactAlias);
+    const severeVariance = Boolean(best && best.nameScore >= 0.75 && materiallyDifferent(transaction.amount, best.expected, amountTolerance));
 
+    if (severeVariance) {
+      return {
+        ...transaction,
+        billId: best.bill.id,
+        occurrenceId: best.bill.occurrenceId,
+        expectedAmount: best.expected,
+        status: 'Amount Variance',
+        confidence: Math.min(best.score, 1.9999),
+        reason: 'Amount differs materially from the Master Bill; explicit review is required before posting.',
+      };
+    }
+
+    const reliable = best?.score >= 0.9 && (margin >= ambiguityMargin || strongAmountDisambiguation || best.exactAlias);
     if (reliable) {
       return {
         ...transaction,
         billId: best.bill.id,
         occurrenceId: best.bill.occurrenceId,
-        expectedAmount: best.bill.actualAmount ?? best.bill.budget,
+        expectedAmount: best.expected,
         status: best.amountDifference != null && best.amountDifference > amountTolerance ? 'Amount Variance' : 'Matched',
         confidence: Math.min(best.score, 1.9999),
         reason: best.exactAlias ? 'Matched using a learned merchant alias.' : strongAmountDisambiguation ? 'Matched using merchant similarity and exact amount.' : null,
@@ -142,7 +185,9 @@ export function reconcileTransactions(transactions, bills, { amountTolerance = 5
 
 export function planStatementPayments(rows, existingPayments = []) {
   const linkedPaymentIds = new Set(rows.map((row) => row.payment_id).filter(Boolean));
-  const pending = rows.filter((row) => ['Matched', 'Amount Variance'].includes(row.match_status) && !row.payment_id && row.bill_id && row.occurrence_id);
+  // Amount Variance is intentionally excluded. It must be explicitly reviewed and
+  // converted to Matched before it can create or link any financial payment record.
+  const pending = rows.filter((row) => row.match_status === 'Matched' && !row.payment_id && row.bill_id && row.occurrence_id);
   const actions = [];
   const byOccurrence = new Map();
 

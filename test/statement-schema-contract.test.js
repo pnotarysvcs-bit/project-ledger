@@ -57,6 +57,6 @@ test('statement status values used by the server action are accepted by the cano
     assert.match(migration, new RegExp(status.replace(/[.*+?^${}()|[\\]\\]/g, '\\$&')), `migration must accept ${status}`);
   }
 
-  assert.match(app, /\['NEW', 'Unmatched'\]/, 'completion must block unresolved NEW and Unmatched rows');
+  assert.match(app, /\['NEW', 'Unmatched', 'Amount Variance'\]/, 'completion must block unresolved NEW, Unmatched, and Amount Variance rows');
   assert.match(app, /match_status: 'Dismissed'/, 'dismiss action must use canonical Dismissed status');
 });
