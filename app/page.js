@@ -48,8 +48,7 @@ function moneyIncludes(value, needle, emptyLabel) {
 }
 function actualSource(bill) {
   if (bill.actualAmount === null) return null;
-  const actualCents = Math.round(Number(bill.actualAmount) * 100);
-  return bill.transactions.some((payment) => payment.fundingAccount === 'Statement import' && Math.round(Number(payment.amount) * 100) === actualCents)
+  return bill.transactions.some((payment) => payment.statementTransactionId)
     ? 'Statement'
     : 'Manual';
 }
