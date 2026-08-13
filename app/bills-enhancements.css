@@ -23,6 +23,18 @@
 .payment-row { display: grid; grid-template-columns: 120px 150px minmax(130px, 1fr) minmax(160px, 2fr) auto auto; gap: 8px; align-items: center; }
 @media (max-width: 900px) { .payment-row { grid-template-columns: 1fr 1fr; } }
 
+.undo-action-form { margin: 0 0 18px; display: flex; justify-content: flex-start; }
+button.undo-prominent { background: #f2c94c; color: #241c00; border: 2px solid #ffd75e; font-weight: 700; box-shadow: 0 0 0 3px rgba(242, 201, 76, .15); }
+button.undo-prominent:hover { background: #ffd75e; }
+.reconcile-status-filter { padding: 14px 20px; display: flex; align-items: end; gap: 10px; flex-wrap: wrap; border-bottom: 1px solid #292b2c; background: #101111; }
+.reconcile-status-filter label { display: grid; gap: 6px; color: #bac4cc; font-size: 12px; text-transform: uppercase; }
+.reconcile-status-filter select { min-width: 170px; background: #0f1011; border: 1px solid #333637; border-radius: 7px; padding: 9px 10px; color: #f4f7f7; font-size: 13px; }
+.reconcile-status-filter span { margin-left: auto; color: #a9b2bb; font-size: 13px; align-self: center; }
+.add-from-review { padding-top: 12px; border-top: 1px dashed #3a3d3e; }
+.add-from-review button { background: #4597ff; color: #06192c; font-weight: 700; }
+.add-from-review button:hover { background: #65b5ff; }
+.reconciliation-table select[name="billOccurrence"] { min-width: 315px; }
+
 /* Reconciliation uses a six-column transaction schema. On phones the later
    generic Bills card rules relabel every panel table, so explicitly restore
    the statement-specific labels for the panel immediately following the
@@ -35,4 +47,6 @@
   .summary + .panel table td:nth-child(5)::before { content: 'Match Status'; }
   .summary + .panel table td:nth-child(6)::before { content: 'Review / Action'; }
   .summary + .panel table td:nth-child(n+7)::before { content: none; }
+  .reconcile-status-filter span { width: 100%; margin-left: 0; }
+  .reconciliation-table select[name="billOccurrence"] { min-width: 240px; }
 }
