@@ -45,17 +45,18 @@ test('monthly Actual overrides Budget and preserves overpayment as credit', () =
   assert.equal(row.transactions.length, 1);
 });
 
-test('historical migrated occurrence does not inherit the current master budget', () => {
+test('historical migrated occurrence uses the master budget while retaining the migration data-quality flag', () => {
   const bills = [{ id: 'b1', bill_name: 'Utility', bill_type: 'Personal', category: 'Utilities', account: 'TCU', budget: 200, frequency: 'monthly', due_day: 15, start_month: '2026-04-01', notes: null, is_active: true, archived_at: null }];
   const occurrences = [{ id: 'o1', bill_id: 'b1', month: '2026-05-01', occurrence_budget_amount: null, actual_amount: null, due_date: null, migration_incomplete: true }];
   const [row] = buildLedgerRows(bills, occurrences, [], { selectedMonth: '2026-05', asOf: new Date('2026-08-08T12:00:00Z') });
   assert.equal(row.masterBudget, 200);
-  assert.equal(row.budget, null);
-  assert.equal(row.effectiveAmount, null);
+  assert.equal(row.budget, 200);
+  assert.equal(row.effectiveAmount, 200);
   assert.equal(row.migrationIncomplete, true);
   const summary = summarizeLedgerBills([row], new Date('2026-08-08T12:00:00Z'));
-  assert.equal(summary.total, 0);
-  assert.equal(summary.incompleteCount, 1);
+  assert.equal(summary.total, 200);
+  assert.equal(summary.incompleteCount, 0);
+  assert.equal(summary.dataQualityCount, 1);
 });
 
 test('summary counts all partially paid rows, including overdue rows', () => {
