@@ -183,12 +183,12 @@ async function completeReconciliation(formData) {
         statement_transaction_id: row.id,
       },
     });
-    const paymentId = payment?.[0]?.id;
-    if (!paymentId) throw new Error('A statement payment could not be confirmed. Reconciliation was not completed.');
+    const createdPaymentId = payment?.[0]?.id;
+    if (!createdPaymentId) throw new Error('A statement payment could not be confirmed. Reconciliation was not completed.');
     await supabaseRequest(`ledger_statement_transactions?id=eq.${encodeURIComponent(row.id)}&import_id=eq.${encodeURIComponent(importId)}`, {
       method: 'PATCH',
       body: {
-        payment_id: paymentId,
+        payment_id: createdPaymentId,
         resolved_at: resolvedAt,
         decision_note: row.match_status === 'Amount Variance' ? 'Payment imported; Actual Bill Amount preserved.' : row.decision_note,
       },
