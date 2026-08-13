@@ -14,13 +14,13 @@ test('Bills workspace shows Actual source as Statement or Manual from persisted 
   assert.match(ledgerData, /statement_transaction_id&payment_month/);
 });
 
-test('statement reconciliation cannot complete with zero parsed transactions', () => {
-  assert.match(reconcilePage, /if \(!rows\.length\) throw new Error\('This statement has no parsed transactions\. It cannot be marked completed\.'\)/);
+test('statement reconciliation with zero parsed transactions returns to review instead of crashing', () => {
+  assert.match(reconcilePage, /if \(!rows\.length\) redirect\(`\/reconcile\?import=\$\{importId\}&notice=This\+statement\+has\+no\+parsed\+transactions\.`\)/);
 });
 
 test('statement-created payments preserve transaction provenance', () => {
   assert.match(reconcilePage, /statement_transaction_id: row\.id/);
-  assert.match(reconcilePage, /Some matched statement transactions are not fully reconciled/);
+  assert.match(reconcilePage, /Resolve\+\$\{incomplete\.length\}\+incomplete\+matched/);
   assert.match(reconcilePage, /A statement payment could not be confirmed/);
 });
 
