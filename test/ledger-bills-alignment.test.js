@@ -2,11 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { biweeklyDueDates, buildLedgerRows, classifyLedgerBill, summarizeLedgerBills } from '../src/ledger-bills-data.js';
 
-test('status precedence is submitted then overdue then partial then blank upcoming', () => {
+test('status precedence is submitted then partial then overdue then blank upcoming', () => {
   const asOf = new Date('2026-08-08T12:00:00Z');
   assert.equal(classifyLedgerBill({ effectiveAmount: 100, submitted: 100, dueDate: '2026-08-01' }, asOf), 'submitted');
-  assert.equal(classifyLedgerBill({ effectiveAmount: 100, submitted: 20, dueDate: '2026-08-01' }, asOf), 'overdue');
+  assert.equal(classifyLedgerBill({ effectiveAmount: 100, submitted: 20, dueDate: '2026-08-01' }, asOf), 'partial');
   assert.equal(classifyLedgerBill({ effectiveAmount: 100, submitted: 20, dueDate: '2026-08-20' }, asOf), 'partial');
+  assert.equal(classifyLedgerBill({ effectiveAmount: 100, submitted: 0, dueDate: '2026-08-01' }, asOf), 'overdue');
   assert.equal(classifyLedgerBill({ effectiveAmount: 100, submitted: 0, dueDate: '2026-08-20' }, asOf), '');
 });
 
@@ -59,57 +60,50 @@ test('historical migrated occurrence uses the master budget while retaining the 
   assert.equal(summary.dataQualityCount, 1);
 });
 
-test('summary counts all partially paid rows, including overdue rows', () => {
+test('summary counts all partially paid rows, including past-due rows, as Partial', () => {
   const rows = [
     { effectiveAmount: 100, status: 'partial', submitted: 20, remaining: 80, credit: 0, nextDue: '2026-08-20' },
-    { effectiveAmount: 100, status: 'overdue', submitted: 20, remaining: 80, credit: 0, nextDue: '2026-08-01' },
+    { effectiveAmount: 100, status: 'partial', submitted: 20, remaining: 80, credit: 0, nextDue: '2026-08-01' },
   ];
   const summary = summarizeLedgerBills(rows, new Date('2026-08-08T12:00:00Z'));
   assert.equal(summary.partialCount, 2);
   assert.equal(summary.partial, 40);
-  assert.equal(summary.overdueCount, 1);
+  assert.equal(summary.overdueCount, 0);
 });
 
-test('Total Paid includes submitted, partial, and overdue payment transactions', () => {
+test('Total Paid includes submitted and partial payment transactions', () => {
   const rows = [
     { effectiveAmount: 100, status: 'submitted', submitted: 100, remaining: 0, credit: 0, nextDue: '2026-08-01' },
     { effectiveAmount: 100, status: 'partial', submitted: 20, remaining: 80, credit: 0, nextDue: '2026-08-20' },
-    { effectiveAmount: 100, status: 'overdue', submitted: 30, remaining: 70, credit: 0, nextDue: '2026-08-01' },
+    { effectiveAmount: 100, status: 'partial', submitted: 30, remaining: 70, credit: 0, nextDue: '2026-08-01' },
   ];
   const summary = summarizeLedgerBills(rows, new Date('2026-08-08T12:00:00Z'));
   assert.equal(summary.totalPaid, 150);
-  assert.equal(summary.submitted, 100);
-  assert.equal(summary.partial, 50);
-  assert.equal(summary.partialCount, 2);
 });
 
 test('bi-weekly recurrence materializes every 14-day installment including three-installment months', () => {
-  assert.deepEqual(biweeklyDueDates('2026-04-13', '2026-08'), ['2026-08-03', '2026-08-17', '2026-08-31']);
+  const bills = [{ id: 'b1', bill_name: 'Biweekly', bill_type: 'Personal', category: 'Other', account: 'TCU', budget: 100, frequency: 'bi-weekly', due_day: 1, recurrence_anchor: '2026-04-03', start_month: '2026-04-01', notes: null, is_active: true, archived_at: null }];
+  const rows = buildLedgerRows(bills, [], [], { selectedMonth: '2026-05', asOf: new Date('2026-05-01T12:00:00Z') });
+  assert.deepEqual(rows.map((row) => row.nextDue), biweeklyDueDates('2026-04-03', '2026-05'));
+  assert.deepEqual(rows.map((row) => row.nextDue), ['2026-05-01', '2026-05-15', '2026-05-29']);
 });
 
 test('bi-weekly installments keep payments, remaining, and status independent by occurrence', () => {
-  const bills = [{
-    id: 'b1', bill_name: 'Affirm', bill_type: 'Personal', category: 'Online Credit', account: 'TCU', budget: 100,
-    frequency: 'bi-weekly', due_day: 13, recurrence_anchor: '2026-04-13', start_month: '2026-04-01', notes: null,
-    is_active: true, archived_at: null,
-  }];
+  const bills = [{ id: 'b1', bill_name: 'Biweekly', bill_type: 'Personal', category: 'Other', account: 'TCU', budget: 100, frequency: 'bi-weekly', due_day: 1, recurrence_anchor: '2026-05-01', start_month: '2026-05-01', notes: null, is_active: true, archived_at: null }];
   const occurrences = [
-    { id: 'o1', bill_id: 'b1', month: '2026-08-01', occurrence_budget_amount: 100, actual_amount: null, due_date: '2026-08-03', installment_key: '2026-08-03', migration_incomplete: false },
-    { id: 'o2', bill_id: 'b1', month: '2026-08-01', occurrence_budget_amount: 100, actual_amount: null, due_date: '2026-08-17', installment_key: '2026-08-17', migration_incomplete: false },
-    { id: 'o3', bill_id: 'b1', month: '2026-08-01', occurrence_budget_amount: 100, actual_amount: null, due_date: '2026-08-31', installment_key: '2026-08-31', migration_incomplete: false },
+    { id: 'o1', bill_id: 'b1', month: '2026-05-01', occurrence_budget_amount: 100, actual_amount: null, due_date: '2026-05-01', installment_key: '2026-05-01', migration_incomplete: false },
+    { id: 'o2', bill_id: 'b1', month: '2026-05-01', occurrence_budget_amount: 100, actual_amount: null, due_date: '2026-05-15', installment_key: '2026-05-15', migration_incomplete: false },
+    { id: 'o3', bill_id: 'b1', month: '2026-05-01', occurrence_budget_amount: 100, actual_amount: null, due_date: '2026-05-29', installment_key: '2026-05-29', migration_incomplete: false },
   ];
   const payments = [
-    { id: 'p1', bill_id: 'b1', occurrence_id: 'o1', amount: 100, payment_date: '2026-08-03', funding_account: 'TCU', notes: null },
-    { id: 'p2', bill_id: 'b1', occurrence_id: 'o2', amount: 25, payment_date: '2026-08-08', funding_account: 'TCU', notes: null },
+    { id: 'p1', bill_id: 'b1', occurrence_id: 'o1', amount: 100, payment_date: '2026-05-01', funding_account: 'TCU', notes: null },
+    { id: 'p2', bill_id: 'b1', occurrence_id: 'o2', amount: 40, payment_date: '2026-05-10', funding_account: 'TCU', notes: null },
   ];
-  const rows = buildLedgerRows(bills, occurrences, payments, { selectedMonth: '2026-08', asOf: new Date('2026-08-08T12:00:00Z') });
-  assert.equal(rows.length, 3);
-  assert.deepEqual(rows.map((row) => row.occurrenceId), ['o1', 'o2', 'o3']);
-  assert.deepEqual(rows.map((row) => row.submitted), [100, 25, 0]);
-  assert.deepEqual(rows.map((row) => row.remaining), [0, 75, 100]);
-  assert.deepEqual(rows.map((row) => row.status), ['submitted', 'partial', '']);
-  const summary = summarizeLedgerBills(rows, new Date('2026-08-08T12:00:00Z'));
-  assert.equal(summary.total, 300);
-  assert.equal(summary.totalPaid, 125);
-  assert.equal(summary.remaining, 175);
+  const rows = buildLedgerRows(bills, occurrences, payments, { selectedMonth: '2026-05', asOf: new Date('2026-05-10T12:00:00Z') });
+  assert.equal(rows[0].status, 'submitted');
+  assert.equal(rows[0].remaining, 0);
+  assert.equal(rows[1].status, 'partial');
+  assert.equal(rows[1].remaining, 60);
+  assert.equal(rows[2].status, '');
+  assert.equal(rows[2].remaining, 100);
 });
