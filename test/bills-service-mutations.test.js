@@ -16,7 +16,7 @@ function fakeRepository(overrides = {}) {
     calls,
     async getMasterBill(id) {
       calls.push(['getMasterBill', id]);
-      return { id, bill_name: 'FedEx', bill_type: 'Personal', category: '', account: 'TCU', frequency: 'monthly' };
+      return { id, bill_name: 'FedEx', bill_type: 'Personal', category: '', account: 'TCU', budget: 80, frequency: 'monthly', due_day: 12 };
     },
     async createMasterBill(payload) {
       calls.push(['createMasterBill', payload]);
@@ -65,18 +65,15 @@ test('category-only edit updates only master category and leaves occurrence unto
   assert.equal(repository.calls.some(([name]) => name === 'updateOccurrence'), false);
 });
 
-test('budget-only edit changes occurrence budget without changing unrelated master fields', async () => {
+test('budget-only edit updates master budget and leaves the monthly occurrence untouched', async () => {
   const repository = fakeRepository();
   await updateBill({
     id: 'bill-1', occurrenceId: 'occ-1', month: '2026-08', name: 'FedEx', type: 'Personal',
     category: '', account: 'TCU', frequency: 'monthly', budget: '90', actualAmount: '75', nextDue: '2026-08-12',
   }, repository);
 
-  assert.deepEqual(repository.calls.find(([name]) => name === 'updateMasterBill'), ['updateMasterBill', 'bill-1', {}]);
-  assert.deepEqual(repository.calls.find(([name]) => name === 'updateOccurrence')[2], {
-    occurrence_budget_amount: 90,
-    migration_incomplete: false,
-  });
+  assert.deepEqual(repository.calls.find(([name]) => name === 'updateMasterBill'), ['updateMasterBill', 'bill-1', { budget: 90 }]);
+  assert.equal(repository.calls.some(([name]) => name === 'updateOccurrence'), false);
 });
 
 test('create bill writes master and one monthly occurrence through repository boundary', async () => {
