@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises';
 const billsPage = await readFile(new URL('../app/page.js', import.meta.url), 'utf8');
 const reconcilePage = await readFile(new URL('../app/reconcile/page.js', import.meta.url), 'utf8');
 const ledgerData = await readFile(new URL('../src/ledger-bills-data.js', import.meta.url), 'utf8');
+const provenanceMigration = await readFile(new URL('../supabase/migrations/202608131150_allow_historical_statement_provenance.sql', import.meta.url), 'utf8');
 
 test('Bills workspace shows Actual source as Statement or Manual from persisted provenance', () => {
   assert.match(billsPage, /function actualSource\(bill\)/);
@@ -29,4 +30,13 @@ test('complete reconciliation keeps planned and newly created payment ids in sep
   assert.match(reconcilePage, /const createdPaymentId = payment\?\.\[0\]\?\.id/);
   assert.match(reconcilePage, /payment_id: createdPaymentId/);
   assert.doesNotMatch(reconcilePage, /const paymentId = payment\?\.\[0\]\?\.id/);
+});
+
+test('historical payment guard permits only first-time statement provenance attachment', () => {
+  assert.match(provenanceMigration, /old\.statement_transaction_id is null/);
+  assert.match(provenanceMigration, /new\.statement_transaction_id is not null/);
+  for (const field of ['bill_id', 'occurrence_id', 'payment_month', 'payment_date', 'amount', 'funding_account', 'notes', 'allocation_provenance']) {
+    assert.match(provenanceMigration, new RegExp(`new\\.${field} is not distinct from old\\.${field}`));
+  }
+  assert.match(provenanceMigration, /Historical payment corrections require the audited correction workflow/);
 });
