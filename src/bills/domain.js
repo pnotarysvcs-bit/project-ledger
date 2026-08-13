@@ -1,4 +1,4 @@
-export const BILL_TYPE_ORDER = Object.freeze(['Personal', 'Business', 'Streaming']);
+export const BILL_TYPE_ORDER = Object.freeze(['Personal', 'Capital One', 'Business', 'Streaming']);
 
 export function invalidBillCategory(value) {
   return ['business', 'personal'].includes(String(value ?? '').trim().toLowerCase());
@@ -11,11 +11,19 @@ export function deriveBillType(account, requestedType) {
   return String(requestedType ?? '').trim();
 }
 
+function billGroup(bill) {
+  const account = String(bill?.account ?? '').trim().toUpperCase();
+  if (account.startsWith('TCUB')) return 'Business';
+  if (account.startsWith('TCU')) return 'Personal';
+  if (account.includes('CAPITAL ONE') || account === 'CAPITALONE') return 'Capital One';
+  return String(bill?.type ?? '').trim();
+}
+
 export function classifyBillStatus({ effectiveAmount, submitted = 0, dueDate }, asOf = new Date()) {
   if (effectiveAmount === null || effectiveAmount === undefined) return 'incomplete';
   if (submitted >= effectiveAmount) return 'submitted';
-  if (dueDate && new Date(`${dueDate}T23:59:59Z`) < asOf) return 'overdue';
   if (submitted > 0) return 'partial';
+  if (dueDate && new Date(`${dueDate}T23:59:59Z`) < asOf) return 'overdue';
   return '';
 }
 
@@ -30,8 +38,9 @@ export function sortBillOccurrences(rows) {
 export function groupBillsByType(rows) {
   const groups = new Map(BILL_TYPE_ORDER.map((type) => [type, []]));
   for (const bill of rows) {
-    if (!groups.has(bill.type)) groups.set(bill.type, []);
-    groups.get(bill.type).push(bill);
+    const group = billGroup(bill);
+    if (!groups.has(group)) groups.set(group, []);
+    groups.get(group).push(bill);
   }
 
   const canonical = BILL_TYPE_ORDER
