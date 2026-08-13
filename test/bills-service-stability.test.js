@@ -10,7 +10,9 @@ function repositoryFixture({ masterOverrides = {}, occurrenceOverrides = {} } = 
     bill_type: 'Personal',
     category: '',
     account: 'TCU',
+    budget: 125,
     frequency: 'monthly',
+    due_day: 20,
     ...masterOverrides,
   };
   const occurrence = {
@@ -61,7 +63,7 @@ test('category-only edit updates master metadata without rewriting occurrence', 
 
 test('FedEx legacy Category Business can be corrected without rewriting unrelated fields', async () => {
   const { repository, calls } = repositoryFixture({
-    masterOverrides: { category: 'Business', bill_type: 'Personal', account: 'TCU' },
+    masterOverrides: { category: 'Business', bill_type: 'Personal', account: 'TCU', budget: 104.30 },
     occurrenceOverrides: { occurrence_budget_amount: 104.30 },
   });
 
@@ -94,14 +96,13 @@ test('a new Business or Personal category is still rejected', async () => {
   );
 });
 
-test('budget-only edit changes occurrence and does not rewrite master fields', async () => {
+test('budget-only edit updates the master budget and leaves the occurrence untouched', async () => {
   const { repository, calls } = repositoryFixture();
   await updateBill({ ...baseInput, budget: '150' }, repository);
 
   const masterUpdate = calls.find(([name]) => name === 'updateMasterBill');
-  assert.deepEqual(masterUpdate[2], {});
-  const occurrenceUpdate = calls.find(([name]) => name === 'updateOccurrence');
-  assert.deepEqual(occurrenceUpdate[2], { occurrence_budget_amount: 150, migration_incomplete: false });
+  assert.deepEqual(masterUpdate[2], { budget: 150 });
+  assert.equal(calls.some(([name]) => name === 'updateOccurrence'), false);
 });
 
 test('actual-only edit preserves budget and updates only Actual', async () => {
