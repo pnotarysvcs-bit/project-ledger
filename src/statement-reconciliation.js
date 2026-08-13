@@ -1,8 +1,11 @@
 import { createHash } from 'node:crypto';
 
-const MONTHS = Object.fromEntries(['january','february','march','april','may','june','july','august','september','october','november','december'].map((name, i) => [name, i + 1]));
+const MONTH_NAMES = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+const MONTHS = Object.fromEntries(MONTH_NAMES.map((name, i) => [name, i + 1]));
+const MONTH_ABBR = Object.fromEntries(MONTH_NAMES.flatMap((name, i) => [[name.slice(0, 3), i + 1], [name, i + 1]]));
 const EXCLUDED = /\b(restaurant|cafe|coffee|starbucks|mcdonald|wendy|burger\s*king|gas|fuel|shell|quiktrip|walmart|target|cash app|cashapp|venmo|zelle)\b/i;
 const RECURRING_HINT = /\b(payment|autopay|insurance|utility|water|mobile|wireless|credit|card|loan|mortgage|property|life|affirm|afterpay)\b/i;
+const NON_PURCHASE = /\b(payment|pymt|credit|refund|adjustment|deposit|interest\s+charge|fee\s+summary|rewards?)\b/i;
 const cents = (value) => Math.round(Number(value ?? 0) * 100);
 
 export function monthFromDate(value) { return value ? String(value).slice(0, 7) : null; }
@@ -41,22 +44,54 @@ function parseMoneyToken(value) {
   return negative ? -amount : amount;
 }
 
-export function extractTransactions(text, year = new Date().getUTCFullYear()) {
+function nearestYearForMonth(month, anchorYear, anchorMonth) {
+  const anchorIndex = anchorYear * 12 + (anchorMonth - 1);
+  return [anchorYear - 1, anchorYear, anchorYear + 1]
+    .map((year) => ({ year, distance: Math.abs((year * 12 + (month - 1)) - anchorIndex) }))
+    .sort((a, b) => a.distance - b.distance)[0].year;
+}
+
+function namedMonthNumber(value) {
+  return MONTH_ABBR[String(value ?? '').toLowerCase()] ?? null;
+}
+
+export function extractTransactions(text, year = new Date().getUTCFullYear(), anchorMonth = 12) {
   const rows = [];
   for (const line of String(text ?? '').split(/\r?\n/)) {
-    const dated = line.trim().match(/^(?:(\d{4})[-\/])?(\d{1,2})[-\/](\d{1,2})\s+(.+)$/);
+    const trimmed = line.trim();
+    const named = trimmed.match(/^(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{1,2})\s+(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{1,2})\s+(.+)$/i);
+    if (named) {
+      const transactionMonth = namedMonthNumber(named[1]);
+      const remainder = named[5].trim();
+      const moneyTokens = [...remainder.matchAll(/\(?-?\$?[\d,]+\.\d{2}\)?/g)];
+      if (!transactionMonth || !moneyTokens.length) continue;
+      const firstMoney = moneyTokens[0];
+      const rawDescription = remainder.slice(0, firstMoney.index).trim();
+      if (!rawDescription || NON_PURCHASE.test(rawDescription)) continue;
+      const parsed = parseMoneyToken(firstMoney[0]);
+      if (!Number.isFinite(parsed) || parsed <= 0) continue;
+      const transactionYear = nearestYearForMonth(transactionMonth, Number(year), Number(anchorMonth));
+      rows.push({
+        date: `${transactionYear}-${String(transactionMonth).padStart(2, '0')}-${String(named[2]).padStart(2, '0')}`,
+        rawDescription,
+        normalizedPayee: normalizePayee(rawDescription),
+        amount: parsed,
+      });
+      continue;
+    }
+
+    const dated = trimmed.match(/^(?:(\d{4})[-\/])?(\d{1,2})[-\/](\d{1,2})\s+(.+)$/);
     if (!dated) continue;
     const dateYear = dated[1] ?? year;
     const remainder = dated[4].trim();
     const moneyTokens = [...remainder.matchAll(/\(?-?\$?[\d,]+\.\d{2}\)?/g)];
     if (!moneyTokens.length) continue;
 
-    // Bank statements commonly render: description | transaction amount | running balance.
-    // The transaction amount is the first monetary column after the description; the
-    // running balance, when present, must never be imported as the payment amount.
+    // The first monetary column after the transaction description is the transaction
+    // amount. A later monetary column may be a running balance and must never be posted.
     const firstMoney = moneyTokens[0];
     const rawDescription = remainder.slice(0, firstMoney.index).trim();
-    if (!rawDescription || /deposit|credit|refund|interest/i.test(rawDescription)) continue;
+    if (!rawDescription || NON_PURCHASE.test(rawDescription)) continue;
     const amount = Math.abs(parseMoneyToken(firstMoney[0]));
     if (!Number.isFinite(amount) || amount <= 0) continue;
 
@@ -78,11 +113,7 @@ function editSimilarity(left, right) {
   rows[0] = Array.from({ length: b.length + 1 }, (_, index) => index);
   for (let i = 1; i <= a.length; i += 1) {
     for (let j = 1; j <= b.length; j += 1) {
-      rows[i][j] = Math.min(
-        rows[i - 1][j] + 1,
-        rows[i][j - 1] + 1,
-        rows[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1),
-      );
+      rows[i][j] = Math.min(rows[i - 1][j] + 1, rows[i][j - 1] + 1, rows[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
     }
   }
   return 1 - rows[a.length][b.length] / Math.max(a.length, b.length, 1);
@@ -150,34 +181,12 @@ export function reconcileTransactions(transactions, bills, { amountTolerance = 5
     const strongAmountDisambiguation = Boolean(best?.exactAmount && best?.nameScore >= 0.75 && (!second?.exactAmount || best.score > second.score));
     const severeVariance = Boolean(best && best.nameScore >= 0.75 && materiallyDifferent(transaction.amount, best.expected, amountTolerance));
 
-    if (severeVariance) {
-      return {
-        ...transaction,
-        billId: best.bill.id,
-        occurrenceId: best.bill.occurrenceId,
-        expectedAmount: best.expected,
-        status: 'Amount Variance',
-        confidence: Math.min(best.score, 1.9999),
-        reason: 'Amount differs materially from the Master Bill; explicit review is required before posting.',
-      };
-    }
+    if (severeVariance) return { ...transaction, billId: best.bill.id, occurrenceId: best.bill.occurrenceId, expectedAmount: best.expected, status: 'Amount Variance', confidence: Math.min(best.score, 1.9999), reason: 'Amount differs materially from the Master Bill; explicit review is required before posting.' };
 
     const reliable = best?.score >= 0.9 && (margin >= ambiguityMargin || strongAmountDisambiguation || best.exactAlias);
-    if (reliable) {
-      return {
-        ...transaction,
-        billId: best.bill.id,
-        occurrenceId: best.bill.occurrenceId,
-        expectedAmount: best.expected,
-        status: best.amountDifference != null && best.amountDifference > amountTolerance ? 'Amount Variance' : 'Matched',
-        confidence: Math.min(best.score, 1.9999),
-        reason: best.exactAlias ? 'Matched using a learned merchant alias.' : strongAmountDisambiguation ? 'Matched using merchant similarity and exact amount.' : null,
-      };
-    }
+    if (reliable) return { ...transaction, billId: best.bill.id, occurrenceId: best.bill.occurrenceId, expectedAmount: best.expected, status: best.amountDifference != null && best.amountDifference > amountTolerance ? 'Amount Variance' : 'Matched', confidence: Math.min(best.score, 1.9999), reason: best.exactAlias ? 'Matched using a learned merchant alias.' : strongAmountDisambiguation ? 'Matched using merchant similarity and exact amount.' : null };
 
-    if (best?.score >= 0.9 && margin < ambiguityMargin) {
-      return { ...transaction, status: 'Unmatched', confidence: Math.min(best.score, 1.9999), reason: 'Multiple Master Bills are plausible; review is required.' };
-    }
+    if (best?.score >= 0.9 && margin < ambiguityMargin) return { ...transaction, status: 'Unmatched', confidence: Math.min(best.score, 1.9999), reason: 'Multiple Master Bills are plausible; review is required.' };
     if (RECURRING_HINT.test(transaction.rawDescription)) return { ...transaction, status: 'NEW', reason: 'Likely recurring bill; approval required' };
     return { ...transaction, status: 'Unmatched', reason: 'No reliable Master Bill match' };
   });
@@ -185,47 +194,32 @@ export function reconcileTransactions(transactions, bills, { amountTolerance = 5
 
 export function planStatementPayments(rows, existingPayments = []) {
   const linkedPaymentIds = new Set(rows.map((row) => row.payment_id).filter(Boolean));
-  // Amount Variance is intentionally excluded. It must be explicitly reviewed and
-  // converted to Matched before it can create or link any financial payment record.
   const pending = rows.filter((row) => row.match_status === 'Matched' && !row.payment_id && row.bill_id && row.occurrence_id);
   const actions = [];
   const byOccurrence = new Map();
-
   for (const row of pending) {
     const list = byOccurrence.get(row.occurrence_id) ?? [];
     list.push(row);
     byOccurrence.set(row.occurrence_id, list);
   }
-
   for (const [occurrenceId, occurrenceRows] of byOccurrence) {
-    const available = existingPayments
-      .filter((payment) => payment.occurrence_id === occurrenceId && !linkedPaymentIds.has(payment.id))
-      .map((payment) => ({ ...payment, used: false }));
+    const available = existingPayments.filter((payment) => payment.occurrence_id === occurrenceId && !linkedPaymentIds.has(payment.id)).map((payment) => ({ ...payment, used: false }));
     const unmatchedRows = [];
-
     for (const row of occurrenceRows) {
       let payment = available.find((candidate) => !candidate.used && cents(candidate.amount) === cents(row.amount) && candidate.payment_date === row.transaction_date);
       if (!payment) payment = available.find((candidate) => !candidate.used && cents(candidate.amount) === cents(row.amount));
-      if (payment) {
-        payment.used = true;
-        actions.push({ row, action: 'link-existing', paymentId: payment.id });
-      } else {
-        unmatchedRows.push(row);
-      }
+      if (payment) { payment.used = true; actions.push({ row, action: 'link-existing', paymentId: payment.id }); }
+      else unmatchedRows.push(row);
     }
-
     const unusedPayments = available.filter((payment) => !payment.used);
     const statementTotal = unmatchedRows.reduce((sum, row) => sum + cents(row.amount), 0);
     const existingTotal = unusedPayments.reduce((sum, payment) => sum + cents(payment.amount), 0);
-
     if (unmatchedRows.length && unusedPayments.length && statementTotal === existingTotal) {
       for (const row of unmatchedRows) actions.push({ row, action: 'covered-by-existing' });
       continue;
     }
-
     for (const row of unmatchedRows) actions.push({ row, action: 'create-payment' });
   }
-
   return actions;
 }
 
