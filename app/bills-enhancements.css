@@ -34,6 +34,7 @@ button.undo-prominent:hover { background: #ffd75e; }
 .add-from-review button { background: #4597ff; color: #06192c; font-weight: 700; }
 .add-from-review button:hover { background: #65b5ff; }
 .reconciliation-table select[name="billOccurrence"] { min-width: 315px; }
+.reconciliation-table tr:has(.status.matched) td:nth-child(6) .inline-payment { display: none; }
 
 /* Reconciliation uses a six-column transaction schema. On phones the generic
    Bills card rules relabel table cells, so scope the statement labels directly
