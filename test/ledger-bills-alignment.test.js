@@ -2,11 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { biweeklyDueDates, buildLedgerRows, classifyLedgerBill, summarizeLedgerBills } from '../src/ledger-bills-data.js';
 
-test('status precedence is submitted then overdue then partial then blank upcoming', () => {
+test('status precedence is submitted then partial then overdue then blank upcoming', () => {
   const asOf = new Date('2026-08-08T12:00:00Z');
   assert.equal(classifyLedgerBill({ effectiveAmount: 100, submitted: 100, dueDate: '2026-08-01' }, asOf), 'submitted');
-  assert.equal(classifyLedgerBill({ effectiveAmount: 100, submitted: 20, dueDate: '2026-08-01' }, asOf), 'overdue');
+  assert.equal(classifyLedgerBill({ effectiveAmount: 100, submitted: 20, dueDate: '2026-08-01' }, asOf), 'partial');
   assert.equal(classifyLedgerBill({ effectiveAmount: 100, submitted: 20, dueDate: '2026-08-20' }, asOf), 'partial');
+  assert.equal(classifyLedgerBill({ effectiveAmount: 100, submitted: 0, dueDate: '2026-08-01' }, asOf), 'overdue');
   assert.equal(classifyLedgerBill({ effectiveAmount: 100, submitted: 0, dueDate: '2026-08-20' }, asOf), '');
 });
 
@@ -59,22 +60,22 @@ test('historical migrated occurrence uses the master budget while retaining the 
   assert.equal(summary.dataQualityCount, 1);
 });
 
-test('summary counts all partially paid rows, including overdue rows', () => {
+test('summary counts all partially paid rows, including past-due rows, as Partial', () => {
   const rows = [
     { effectiveAmount: 100, status: 'partial', submitted: 20, remaining: 80, credit: 0, nextDue: '2026-08-20' },
-    { effectiveAmount: 100, status: 'overdue', submitted: 20, remaining: 80, credit: 0, nextDue: '2026-08-01' },
+    { effectiveAmount: 100, status: 'partial', submitted: 20, remaining: 80, credit: 0, nextDue: '2026-08-01' },
   ];
   const summary = summarizeLedgerBills(rows, new Date('2026-08-08T12:00:00Z'));
   assert.equal(summary.partialCount, 2);
   assert.equal(summary.partial, 40);
-  assert.equal(summary.overdueCount, 1);
+  assert.equal(summary.overdueCount, 0);
 });
 
-test('Total Paid includes submitted, partial, and overdue payment transactions', () => {
+test('Total Paid includes submitted and partial payment transactions', () => {
   const rows = [
     { effectiveAmount: 100, status: 'submitted', submitted: 100, remaining: 0, credit: 0, nextDue: '2026-08-01' },
     { effectiveAmount: 100, status: 'partial', submitted: 20, remaining: 80, credit: 0, nextDue: '2026-08-20' },
-    { effectiveAmount: 100, status: 'overdue', submitted: 30, remaining: 70, credit: 0, nextDue: '2026-08-01' },
+    { effectiveAmount: 100, status: 'partial', submitted: 30, remaining: 70, credit: 0, nextDue: '2026-08-01' },
   ];
   const summary = summarizeLedgerBills(rows, new Date('2026-08-08T12:00:00Z'));
   assert.equal(summary.totalPaid, 150);

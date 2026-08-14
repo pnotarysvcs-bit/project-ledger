@@ -29,12 +29,13 @@ test('upcoming unpaid bills do not expose Future status', () => {
   assert.equal(status, '');
 });
 
-test('status precedence is incomplete, submitted, overdue, partial, then blank upcoming', () => {
+test('status precedence is incomplete, submitted, partial, overdue, then blank upcoming', () => {
   const asOf = new Date('2026-08-11T12:00:00Z');
   assert.equal(classifyBillStatus({ effectiveAmount: null, submitted: 0, dueDate: '2026-08-01' }, asOf), 'incomplete');
   assert.equal(classifyBillStatus({ effectiveAmount: 100, submitted: 100, dueDate: '2026-08-01' }, asOf), 'submitted');
-  assert.equal(classifyBillStatus({ effectiveAmount: 100, submitted: 20, dueDate: '2026-08-01' }, asOf), 'overdue');
+  assert.equal(classifyBillStatus({ effectiveAmount: 100, submitted: 20, dueDate: '2026-08-01' }, asOf), 'partial');
   assert.equal(classifyBillStatus({ effectiveAmount: 100, submitted: 20, dueDate: '2026-08-20' }, asOf), 'partial');
+  assert.equal(classifyBillStatus({ effectiveAmount: 100, submitted: 0, dueDate: '2026-08-01' }, asOf), 'overdue');
   assert.equal(classifyBillStatus({ effectiveAmount: 100, submitted: 0, dueDate: '2026-08-20' }, asOf), '');
 });
 

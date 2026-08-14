@@ -1,23 +1,32 @@
 import { createHash } from 'node:crypto';
 
-const MONTHS = Object.fromEntries(['january','february','march','april','may','june','july','august','september','october','november','december'].map((name, i) => [name, i + 1]));
-const EXCLUDED = /\b(restaurant|cafe|coffee|starbucks|mcdonald|wendy|burger\s*king|gas|fuel|shell|quiktrip|walmart|target|cash app|cashapp|venmo|zelle)\b/i;
+const MONTH_NAMES = ['january','february','march','april','may','june','july','august','september','october','november','december'];
+const MONTHS = Object.fromEntries(MONTH_NAMES.flatMap((name, i) => [[name, i + 1], [name.slice(0, 3), i + 1]]));
+const MONTH_ABBR = Object.fromEntries(MONTH_NAMES.flatMap((name, i) => [[name.slice(0, 3), i + 1], [name, i + 1]]));
+const MONTH_PATTERN = '(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)';
+const DINING_OR_FOOD = /\b(restaurant|restaurants|dining|diner|cafe|cafeteria|coffee|food|grill|bar\s*&?\s*grill|bistro|bakery|pizza|pizzeria|starbucks|mcdonald(?:'s)?|wendy(?:'s)?|burger\s*king|taco\s*bell|chipotle|panera|subway|doordash|door\s*dash|uber\s*eats|ubereats|grubhub|chick[-\s]*fil[-\s]*a|popeyes|kfc|sonic|ihop|denny(?:'s)?|applebee(?:'s)?|chili(?:'s)?|olive\s*garden)\b/i;
+const EXCLUDED = /\b(gas|fuel|shell|quiktrip|walmart|target|cash app|cashapp|venmo|zelle)\b/i;
 const RECURRING_HINT = /\b(payment|autopay|insurance|utility|water|mobile|wireless|credit|card|loan|mortgage|property|life|affirm|afterpay)\b/i;
+const NON_PURCHASE = /\b(payment|pymt|credit|refund|adjustment|deposit|interest\s+charge|fee\s+summary|rewards?)\b/i;
 const cents = (value) => Math.round(Number(value ?? 0) * 100);
 
 export function monthFromDate(value) { return value ? String(value).slice(0, 7) : null; }
 
+function monthNumber(value) {
+  return MONTHS[String(value ?? '').toLowerCase()] ?? null;
+}
+
 export function detectStatementPeriod(text) {
   const normalized = String(text ?? '').replace(/[–—]/g, '-');
   const numeric = normalized.match(/\b(0?[1-9]|1[0-2])[\/-](0?[1-9]|[12]\d|3[01])[\/-](20\d{2})\s*(?:-|to|through)\s*(0?[1-9]|1[0-2])[\/-](0?[1-9]|[12]\d|3[01])[\/-](20\d{2})\b/i);
-  const named = normalized.match(new RegExp(`\\b(${Object.keys(MONTHS).join('|')})\\s+(\\d{1,2}),?\\s+(20\\d{2})\\s*(?:-|to|through)\\s*(${Object.keys(MONTHS).join('|')})\\s+(\\d{1,2}),?\\s+(20\\d{2})`, 'i'));
+  const named = normalized.match(new RegExp(`\\b(${MONTH_PATTERN})\\s+(\\d{1,2}),?\\s+(20\\d{2})\\s*(?:-|to|through)\\s*(${MONTH_PATTERN})\\s+(\\d{1,2}),?\\s+(20\\d{2})`, 'i'));
   let start; let end;
   if (numeric) {
     start = `${numeric[3]}-${String(numeric[1]).padStart(2, '0')}-${String(numeric[2]).padStart(2, '0')}`;
     end = `${numeric[6]}-${String(numeric[4]).padStart(2, '0')}-${String(numeric[5]).padStart(2, '0')}`;
   } else if (named) {
-    start = `${named[3]}-${String(MONTHS[named[1].toLowerCase()]).padStart(2, '0')}-${String(named[2]).padStart(2, '0')}`;
-    end = `${named[6]}-${String(MONTHS[named[4].toLowerCase()]).padStart(2, '0')}-${String(named[5]).padStart(2, '0')}`;
+    start = `${named[3]}-${String(monthNumber(named[1])).padStart(2, '0')}-${String(named[2]).padStart(2, '0')}`;
+    end = `${named[6]}-${String(monthNumber(named[4])).padStart(2, '0')}-${String(named[5]).padStart(2, '0')}`;
   } else return { start: null, end: null, detectedMonth: null, confidence: 'uncertain', spansMonths: false };
   const spansMonths = monthFromDate(start) !== monthFromDate(end);
   return { start, end, detectedMonth: spansMonths ? monthFromDate(end) : monthFromDate(start), confidence: spansMonths ? 'confirmation-required' : 'high', spansMonths };
@@ -41,22 +50,51 @@ function parseMoneyToken(value) {
   return negative ? -amount : amount;
 }
 
-export function extractTransactions(text, year = new Date().getUTCFullYear()) {
+function nearestYearForMonth(month, anchorYear, anchorMonth) {
+  const anchorIndex = anchorYear * 12 + (anchorMonth - 1);
+  return [anchorYear - 1, anchorYear, anchorYear + 1]
+    .map((year) => ({ year, distance: Math.abs((year * 12 + (month - 1)) - anchorIndex) }))
+    .sort((a, b) => a.distance - b.distance)[0].year;
+}
+
+function namedMonthNumber(value) {
+  return MONTH_ABBR[String(value ?? '').toLowerCase()] ?? null;
+}
+
+export function extractTransactions(text, year = new Date().getUTCFullYear(), anchorMonth = 12) {
   const rows = [];
   for (const line of String(text ?? '').split(/\r?\n/)) {
-    const dated = line.trim().match(/^(?:(\d{4})[-\/])?(\d{1,2})[-\/](\d{1,2})\s+(.+)$/);
+    const trimmed = line.trim();
+    const named = trimmed.match(/^(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{1,2})\s+(Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+(\d{1,2})\s+(.+)$/i);
+    if (named) {
+      const transactionMonth = namedMonthNumber(named[1]);
+      const remainder = named[5].trim();
+      const moneyTokens = [...remainder.matchAll(/\(?-?\$?[\d,]+\.\d{2}\)?/g)];
+      if (!transactionMonth || !moneyTokens.length) continue;
+      const firstMoney = moneyTokens[0];
+      const rawDescription = remainder.slice(0, firstMoney.index).trim();
+      if (!rawDescription || NON_PURCHASE.test(rawDescription) || DINING_OR_FOOD.test(rawDescription)) continue;
+      const parsed = parseMoneyToken(firstMoney[0]);
+      if (!Number.isFinite(parsed) || parsed <= 0) continue;
+      const transactionYear = nearestYearForMonth(transactionMonth, Number(year), Number(anchorMonth));
+      rows.push({
+        date: `${transactionYear}-${String(transactionMonth).padStart(2, '0')}-${String(named[2]).padStart(2, '0')}`,
+        rawDescription,
+        normalizedPayee: normalizePayee(rawDescription),
+        amount: parsed,
+      });
+      continue;
+    }
+
+    const dated = trimmed.match(/^(?:(\d{4})[-\/])?(\d{1,2})[-\/](\d{1,2})\s+(.+)$/);
     if (!dated) continue;
     const dateYear = dated[1] ?? year;
     const remainder = dated[4].trim();
     const moneyTokens = [...remainder.matchAll(/\(?-?\$?[\d,]+\.\d{2}\)?/g)];
     if (!moneyTokens.length) continue;
-
-    // Bank statements commonly render: description | transaction amount | running balance.
-    // The transaction amount is the first monetary column after the description; the
-    // running balance, when present, must never be imported as the payment amount.
     const firstMoney = moneyTokens[0];
     const rawDescription = remainder.slice(0, firstMoney.index).trim();
-    if (!rawDescription || /deposit|credit|refund|interest/i.test(rawDescription)) continue;
+    if (!rawDescription || NON_PURCHASE.test(rawDescription) || DINING_OR_FOOD.test(rawDescription)) continue;
     const amount = Math.abs(parseMoneyToken(firstMoney[0]));
     if (!Number.isFinite(amount) || amount <= 0) continue;
 
@@ -185,8 +223,6 @@ export function reconcileTransactions(transactions, bills, { amountTolerance = 5
 
 export function planStatementPayments(rows, existingPayments = []) {
   const linkedPaymentIds = new Set(rows.map((row) => row.payment_id).filter(Boolean));
-  // Amount Variance is intentionally excluded. It must be explicitly reviewed and
-  // converted to Matched before it can create or link any financial payment record.
   const pending = rows.filter((row) => row.match_status === 'Matched' && !row.payment_id && row.bill_id && row.occurrence_id);
   const actions = [];
   const byOccurrence = new Map();

@@ -7,6 +7,7 @@ import {
 } from './bills/domain.js';
 
 const DAY = 86400000;
+const MONTH_VIEW_START = '2026-04-01';
 
 export function normalizeLedgerMonth(value, fallback = new Date()) {
   if (/^\d{4}-\d{2}$/.test(value ?? '')) return value;
@@ -157,9 +158,6 @@ export function buildLedgerRows(bills, occurrences, payments, { selectedMonth, a
     const dates = expectedDates;
 
     for (const [dateIndex, dueDate] of dates.entries()) {
-      // Master schedule is authoritative. Exact persisted occurrences are preferred;
-      // otherwise retain the existing occurrence identity by ordinal so Actuals,
-      // payments, and statement provenance remain attached after a master Due Date edit.
       const occurrence = occurrenceMap.get(dueDate) ?? persisted[dateIndex] ?? null;
       const historicalMissing = normalized < normalizeLedgerMonth() && !occurrence;
       const migrationIncomplete = historicalMissing || occurrence?.migration_incomplete === true;
@@ -208,20 +206,98 @@ export function buildLedgerRows(bills, occurrences, payments, { selectedMonth, a
   return sortBillOccurrences(rows);
 }
 
+function normalizedPaymentForCarryForward(payment) {
+  return {
+    id: payment.id,
+    amount: Number(payment.amount),
+    paymentDate: payment.payment_date,
+    fundingAccount: payment.funding_account,
+    notes: payment.notes,
+    occurrenceId: payment.occurrence_id ?? null,
+    statementTransactionId: payment.statement_transaction_id ?? null,
+  };
+}
+
+export function applyOverdueCarryForward(rows, bills, occurrences, payments, { asOf = new Date() } = {}) {
+  const today = asOf.toISOString().slice(0, 10);
+  const billsById = new Map(bills.map((bill) => [bill.id, bill]));
+  const paymentsByOccurrence = new Map();
+  const legacyPaymentsByBillMonth = new Map();
+
+  for (const payment of payments) {
+    const normalizedPayment = normalizedPaymentForCarryForward(payment);
+    if (payment.occurrence_id) {
+      const list = paymentsByOccurrence.get(payment.occurrence_id) ?? [];
+      list.push(normalizedPayment);
+      paymentsByOccurrence.set(payment.occurrence_id, list);
+    } else if (payment.payment_month) {
+      const key = `${payment.bill_id}:${payment.payment_month}`;
+      const list = legacyPaymentsByBillMonth.get(key) ?? [];
+      list.push(normalizedPayment);
+      legacyPaymentsByBillMonth.set(key, list);
+    }
+  }
+
+  const overdueByBill = new Map();
+  for (const occurrence of occurrences) {
+    if (!occurrence?.due_date || occurrence.due_date >= today) continue;
+    const bill = billsById.get(occurrence.bill_id);
+    if (!bill) continue;
+
+    const budget = bill.budget === null || bill.budget === undefined ? null : Number(bill.budget);
+    const actualAmount = occurrence.actual_amount === null || occurrence.actual_amount === undefined
+      ? null
+      : Number(occurrence.actual_amount);
+    const occurrencePayments = paymentsByOccurrence.get(occurrence.id) ?? [];
+    const legacyKey = `${occurrence.bill_id}:${occurrence.month}`;
+    const legacyPayments = bill.frequency === 'bi-weekly' ? [] : (legacyPaymentsByBillMonth.get(legacyKey) ?? []);
+    const amounts = calculateOccurrenceAmounts({
+      budget,
+      actualAmount,
+      payments: [...occurrencePayments, ...legacyPayments],
+    });
+    if (amounts.effectiveAmount === null || (amounts.remaining ?? 0) <= 0) continue;
+
+    const current = overdueByBill.get(occurrence.bill_id) ?? { count: 0, outstanding: 0 };
+    current.count += 1;
+    current.outstanding += amounts.remaining ?? 0;
+    overdueByBill.set(occurrence.bill_id, current);
+  }
+
+  return rows.map((row) => {
+    const overdue = overdueByBill.get(row.id);
+    if (!overdue?.count) return { ...row, overdueCount: 0, overdueOutstanding: 0 };
+
+    const label = overdue.count > 1 ? `Overdue ×${overdue.count}` : 'Overdue';
+    const preserveCurrentStatus = ['submitted', 'partial', 'incomplete'].includes(row.status);
+    return {
+      ...row,
+      payee: `${row.payee} · ${label}`,
+      status: preserveCurrentStatus ? row.status : 'overdue',
+      overdueCount: overdue.count,
+      overdueOutstanding: overdue.outstanding,
+    };
+  });
+}
+
 export async function getLedgerBills({ selectedMonth, asOf = new Date() } = {}) {
   const normalized = normalizeLedgerMonth(selectedMonth);
   await ensureLedgerOccurrencesForMonth(normalized);
   const month = `${normalized}-01`;
-  const [bills, occurrences, payments] = await Promise.all([
+  const [bills, occurrences, payments, historyOccurrences, historyPayments] = await Promise.all([
     supabaseRequest(`ledger_bills?select=id,bill_name,bill_type,category,account,budget,frequency,due_day,recurrence_anchor,start_month,notes,is_active,archived_at&start_month=lte.${month}&order=bill_name.asc`),
     supabaseRequest(`ledger_bill_months?select=id,bill_id,month,occurrence_budget_amount,actual_amount,due_date,installment_key,migration_incomplete&month=eq.${month}&order=due_date.asc`),
-    supabaseRequest(`ledger_bill_payments?select=id,bill_id,occurrence_id,amount,payment_date,funding_account,notes,statement_transaction_id&payment_month=eq.${month}&order=payment_date.asc`),
+    supabaseRequest(`ledger_bill_payments?select=id,bill_id,occurrence_id,amount,payment_date,payment_month,funding_account,notes,statement_transaction_id&payment_month=eq.${month}&order=payment_date.asc`),
+    supabaseRequest(`ledger_bill_months?select=id,bill_id,month,occurrence_budget_amount,actual_amount,due_date,installment_key,migration_incomplete&month=gte.${MONTH_VIEW_START}&month=lte.${month}&order=due_date.asc`),
+    supabaseRequest(`ledger_bill_payments?select=id,bill_id,occurrence_id,amount,payment_date,payment_month,funding_account,notes,statement_transaction_id&payment_month=gte.${MONTH_VIEW_START}&payment_month=lte.${month}&order=payment_date.asc`),
   ]);
-  return buildLedgerRows(bills, occurrences, payments, { selectedMonth: normalized, asOf });
+  const rows = buildLedgerRows(bills, occurrences, payments, { selectedMonth: normalized, asOf });
+  return applyOverdueCarryForward(rows, bills, historyOccurrences, historyPayments, { asOf });
 }
 
 export function summarizeLedgerBills(rows, asOf = new Date()) {
   const today = new Date(`${asOf.toISOString().slice(0, 10)}T00:00:00Z`);
+  const seenOverdueBills = new Set();
   return rows.reduce((summary, bill) => {
     const effectiveAmount = bill.effectiveAmount ?? 0;
     const submitted = bill.submitted ?? 0;
@@ -245,7 +321,13 @@ export function summarizeLedgerBills(rows, asOf = new Date()) {
       summary.partial += submitted;
       summary.partialCount += 1;
     }
-    if (bill.status === 'overdue') {
+
+    const carryCount = Number(bill.overdueCount ?? 0);
+    if (carryCount > 0 && !seenOverdueBills.has(bill.id)) {
+      summary.overdue += Number(bill.overdueOutstanding ?? 0);
+      summary.overdueCount += carryCount;
+      seenOverdueBills.add(bill.id);
+    } else if (carryCount === 0 && bill.status === 'overdue') {
       summary.overdue += bill.remaining ?? 0;
       summary.overdueCount += 1;
     }
@@ -277,21 +359,44 @@ export function summarizeLedgerBills(rows, asOf = new Date()) {
 }
 
 export function getLedgerOverview(rows) {
-  const definitions = [
-    ['submitted', 'Submitted', (bill) => bill.effectiveAmount ?? 0],
-    ['overdue', 'Overdue', (bill) => bill.remaining ?? 0],
-    ['partial', 'Partial', (bill) => bill.submitted ?? 0],
-  ];
+  const submitted = rows.filter((bill) => bill.status === 'submitted');
+  const partial = rows.filter((bill) => bill.status === 'partial');
+  const seenOverdueBills = new Set();
+  let overdueCount = 0;
+  let overdueAmount = 0;
 
-  return definitions.map(([key, label, amount]) => {
-    const bills = rows.filter((bill) => bill.status === key);
-    return {
-      key,
-      label,
-      count: bills.length,
-      amount: bills.reduce((sum, bill) => sum + amount(bill), 0),
-    };
-  });
+  for (const bill of rows) {
+    const carryCount = Number(bill.overdueCount ?? 0);
+    if (carryCount > 0 && !seenOverdueBills.has(bill.id)) {
+      overdueCount += carryCount;
+      overdueAmount += Number(bill.overdueOutstanding ?? 0);
+      seenOverdueBills.add(bill.id);
+    } else if (carryCount === 0 && bill.status === 'overdue') {
+      overdueCount += 1;
+      overdueAmount += bill.remaining ?? 0;
+    }
+  }
+
+  return [
+    {
+      key: 'submitted',
+      label: 'Submitted',
+      count: submitted.length,
+      amount: submitted.reduce((sum, bill) => sum + (bill.effectiveAmount ?? 0), 0),
+    },
+    {
+      key: 'overdue',
+      label: 'Overdue',
+      count: overdueCount,
+      amount: overdueAmount,
+    },
+    {
+      key: 'partial',
+      label: 'Partial',
+      count: partial.length,
+      amount: partial.reduce((sum, bill) => sum + (bill.submitted ?? 0), 0),
+    },
+  ];
 }
 
 export function groupLedgerBills(rows) {
