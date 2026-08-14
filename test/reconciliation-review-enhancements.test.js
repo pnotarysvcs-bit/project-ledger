@@ -6,6 +6,7 @@ import { calculateOccurrenceAmounts, classifyBillStatus } from '../src/bills/dom
 import { recordPayment } from '../src/bills/service.js';
 
 const pageSource = readFileSync(new URL('../app/reconcile/page.js', import.meta.url), 'utf8');
+const styleSource = readFileSync(new URL('../app/bills-enhancements.css', import.meta.url), 'utf8');
 
 test('dining and food transactions are excluded before reconciliation review', () => {
   const rows = extractTransactions(`
@@ -75,4 +76,8 @@ test('reconciliation review supports status filters and inline new bill creation
 test('Master Bill options are alphabetized and Undo has a prominent dedicated style hook', () => {
   assert.match(pageSource, /String\(a\.payee \?\? ''\)\.localeCompare\(String\(b\.payee \?\? ''\)/);
   assert.match(pageSource, /className="undo-prominent">Undo Last Action/);
+});
+
+test('matched reconciliation rows collapse the editable review controls', () => {
+  assert.match(styleSource, /tr:has\(\.status\.matched\) td:nth-child\(6\) \.inline-payment \{ display: none; \}/);
 });
