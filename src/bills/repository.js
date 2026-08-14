@@ -71,7 +71,8 @@ export function createBillsRepository(request = supabaseRequest) {
     },
 
     async removePayment({ billId, occurrenceId, paymentId, month }) {
-      await request(`ledger_bill_payments?id=eq.${encodeURIComponent(paymentId)}&bill_id=eq.${encodeURIComponent(billId)}&occurrence_id=eq.${encodeURIComponent(occurrenceId)}&payment_month=eq.${month}-01`, { method: 'DELETE' });
+      const occurrenceFilter = occurrenceId ? `&occurrence_id=eq.${encodeURIComponent(occurrenceId)}` : '';
+      await request(`ledger_bill_payments?id=eq.${encodeURIComponent(paymentId)}&bill_id=eq.${encodeURIComponent(billId)}&payment_month=eq.${month}-01${occurrenceFilter}`, { method: 'DELETE' });
     },
 
     async archiveBill(id, archivedAt = new Date().toISOString()) {
