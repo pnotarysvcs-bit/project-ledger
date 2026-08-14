@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { getLedgerBills, groupLedgerBills, normalizeLedgerMonth, summarizeLedgerBills } from '../src/ledger-bills-data.js';
-import { applyBillFilters, billFilterQuery, getBillFilters } from '../src/bills/filters.js';
+import { billFilterQuery, getBillFilters } from '../src/bills/filters.js';
 import {
   addBillAction,
   addPaymentAction,
@@ -21,8 +21,43 @@ const displayDate = (date) => date ? new Intl.DateTimeFormat('en-US', { timeZone
 const invalidCategory = (value) => ['business', 'personal'].includes(String(value ?? '').trim().toLowerCase());
 const displayCategory = (value) => !value || invalidCategory(value) ? 'Needs category' : value;
 const anchorId = (value) => `bill-${String(value ?? '').replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+const blankTokens = new Set(['blank', 'empty', '(blank)']);
 function monthName(value) { return new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', month: 'long', year: 'numeric' }).format(new Date(`${value}-01T00:00:00Z`)); }
 function monthOptions(selectedMonth) { const cursor = new Date('2026-04-01T00:00:00Z'); const end = new Date(); end.setUTCMonth(Math.max(end.getUTCMonth() + 6, 11)); const options = []; while (cursor <= end || cursor.toISOString().slice(0, 7) <= selectedMonth) { const value = cursor.toISOString().slice(0, 7); options.push({ value, label: monthName(value) }); cursor.setUTCMonth(cursor.getUTCMonth() + 1); } return options; }
+function isBlank(value) { return value === null || value === undefined || String(value).trim() === ''; }
+function wantsBlank(needle) { return blankTokens.has(String(needle ?? '').trim().toLowerCase()); }
+function includes(value, needle) {
+  if (!needle) return true;
+  if (wantsBlank(needle)) return isBlank(value);
+  return String(value ?? '').toLowerCase().includes(needle.toLowerCase());
+}
+function exact(value, needle) {
+  if (!needle) return true;
+  if (wantsBlank(needle)) return isBlank(value);
+  return String(value ?? '').trim().toLowerCase() === needle.trim().toLowerCase();
+}
+function moneyIncludes(value, needle) {
+  if (!needle) return true;
+  if (wantsBlank(needle)) return isBlank(value);
+  if (isBlank(value)) return false;
+  return includes(value, needle) || includes(money.format(value), needle);
+}
+function actualSource(bill) {
+  if (bill.actualAmount === null) return null;
+  return bill.transactions.some((payment) => payment.statementTransactionId)
+    ? 'Statement'
+    : 'Manual';
+}
+function applyFilters(rows, filters) {
+  return rows.filter((bill) => includes(bill.payee, filters.bill)
+    && exact(bill.type, filters.type)
+    && (wantsBlank(filters.category) ? isBlank(bill.category) : includes(displayCategory(bill.category), filters.category))
+    && exact(bill.account, filters.account)
+    && moneyIncludes(bill.budget, filters.budget)
+    && moneyIncludes(bill.actualAmount, filters.actual)
+    && (wantsBlank(filters.due) ? isBlank(bill.nextDue) : (includes(bill.nextDue, filters.due) || includes(displayDate(bill.nextDue), filters.due)))
+    && exact(bill.status, filters.status));
+}
 
 export default async function BillsPage({ searchParams }) {
   const params = await searchParams;
@@ -34,7 +69,7 @@ export default async function BillsPage({ searchParams }) {
   const filters = getBillFilters(params);
   const returnQuery = billFilterQuery(filters);
   const filterSuffix = returnQuery ? `&${returnQuery}` : '';
-  const filteredRows = applyBillFilters(rows, filters, { moneyFormatter: money, displayDate, displayCategory });
+  const filteredRows = applyFilters(rows, filters);
   const selectedKey = params?.partial || params?.edit;
   const selected = rows.find((bill) => bill.rowKey === selectedKey || bill.occurrenceId === selectedKey);
 
