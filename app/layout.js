@@ -3,6 +3,7 @@ import './bills-enhancements.css';
 import './bills-hotfix.css';
 import Nav from './nav.js';
 import PwaRegister from './pwa-register.js';
+import BillsActionEnhancer from './bills-action-enhancer.js';
 
 export const metadata = {
   title: 'Project Ledger',
@@ -35,6 +36,7 @@ export default function RootLayout({ children }) {
     <html lang="en">
       <body>
         <PwaRegister />
+        <BillsActionEnhancer />
         <div className="shell">
           <Nav />
           <main>{children}</main>
