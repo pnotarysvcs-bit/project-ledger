@@ -61,10 +61,8 @@ function dueDatesForBill(bill, selectedMonth) {
   return [dueDateForMonth(monthDate(selectedMonth), bill.due_day)];
 }
 
-function activeInMonth(bill, selected) {
-  if (bill.is_active) return true;
-  if (!bill.archived_at) return false;
-  return new Date(bill.archived_at) >= new Date(Date.UTC(selected.getUTCFullYear(), selected.getUTCMonth() + 1, 1));
+function activeInMonth(bill) {
+  return bill.is_active === true;
 }
 
 export function classifyLedgerBill(input, asOf = new Date()) {
@@ -73,7 +71,7 @@ export function classifyLedgerBill(input, asOf = new Date()) {
 
 function expectedBills(bills, selectedMonth) {
   const selected = monthDate(selectedMonth);
-  return bills.filter((bill) => activeInMonth(bill, selected) && appliesToMonth(bill, selected));
+  return bills.filter((bill) => activeInMonth(bill) && appliesToMonth(bill, selected));
 }
 
 export async function ensureLedgerOccurrencesForMonth(selectedMonth) {
@@ -157,9 +155,6 @@ export function buildLedgerRows(bills, occurrences, payments, { selectedMonth, a
     const dates = expectedDates;
 
     for (const [dateIndex, dueDate] of dates.entries()) {
-      // Master schedule is authoritative. Exact persisted occurrences are preferred;
-      // otherwise retain the existing occurrence identity by ordinal so Actuals,
-      // payments, and statement provenance remain attached after a master Due Date edit.
       const occurrence = occurrenceMap.get(dueDate) ?? persisted[dateIndex] ?? null;
       const historicalMissing = normalized < normalizeLedgerMonth() && !occurrence;
       const migrationIncomplete = historicalMissing || occurrence?.migration_incomplete === true;
