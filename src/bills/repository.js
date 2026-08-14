@@ -70,9 +70,17 @@ export function createBillsRepository(request = supabaseRequest) {
       await request(`ledger_bill_payments?id=eq.${encodeURIComponent(paymentId)}&bill_id=eq.${encodeURIComponent(billId)}&occurrence_id=eq.${encodeURIComponent(occurrenceId)}&payment_month=eq.${month}-01`, { method: 'PATCH', body: patch });
     },
 
-    async removePayment({ billId, occurrenceId, paymentId, month }) {
-      const occurrenceFilter = occurrenceId ? `&occurrence_id=eq.${encodeURIComponent(occurrenceId)}` : '';
-      await request(`ledger_bill_payments?id=eq.${encodeURIComponent(paymentId)}&bill_id=eq.${encodeURIComponent(billId)}&payment_month=eq.${month}-01${occurrenceFilter}`, { method: 'DELETE' });
+    async removePayment({ billId, occurrenceId, paymentId, month, reason = 'Undo Submitted' }) {
+      await request('rpc/project_ledger_reverse_payment', {
+        method: 'POST',
+        body: {
+          p_payment_id: paymentId,
+          p_bill_id: billId,
+          p_payment_month: `${month}-01`,
+          p_occurrence_id: occurrenceId || null,
+          p_reason: reason,
+        },
+      });
     },
 
     async archiveBill(id, archivedAt = new Date().toISOString()) {
