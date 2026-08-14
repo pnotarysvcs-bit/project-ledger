@@ -41,7 +41,7 @@ function validateUpdatedCategory(category, currentCategory) {
 
 function validateBillType(account, requestedType) {
   const billType = deriveBillType(account, requestedType);
-  if (!['Personal', 'Business', 'Streaming'].includes(billType)) throw new Error('Choose a valid Type.');
+  if (!['Personal', 'Business', 'Streaming', 'Capital One'].includes(billType)) throw new Error('Choose a valid Type.');
   return billType;
 }
 
@@ -102,9 +102,6 @@ export async function updateBill(input, repository = billsRepository) {
   const budget = numberOrNull(input.budget, 'Budget Amount');
   const actualAmount = numberOrNull(input.actualAmount, 'Actual Bill Amount');
 
-  // Existing records can contain legacy Category values of Business/Personal.
-  // Resolve the current master before category validation so an unrelated edit is
-  // not blocked merely because that legacy value already exists.
   validateBillIdentity({ id, month, name, account, category, dueDate, validateCategory: false });
 
   const master = await repository.getMasterBill(id);
@@ -148,8 +145,6 @@ export async function updateBill(input, repository = billsRepository) {
   } else {
     const currentActual = occurrence.actual_amount == null ? null : Number(occurrence.actual_amount);
     const occurrencePatch = {};
-    // Actual is intentionally month-specific. Budget and Due Date are master-level
-    // fields and are not written back into historical monthly occurrence snapshots.
     if (actualAmount !== currentActual) occurrencePatch.actual_amount = actualAmount;
     if (Object.keys(occurrencePatch).length) {
       occurrencePatch.migration_incomplete = false;
@@ -237,10 +232,10 @@ export async function deletePayment(input, repository = billsRepository) {
   const occurrenceId = String(input.occurrenceId ?? '').trim();
   const paymentId = String(input.paymentId ?? '').trim();
   const month = String(input.month ?? '').trim();
-  if (!billId || !occurrenceId || !paymentId) throw new Error('Payment, occurrence, and bill identifiers are required.');
+  if (!billId || !paymentId) throw new Error('Payment and bill identifiers are required.');
   if (!validMonth(month)) throw new Error('A valid month is required.');
   await repository.removePayment({ billId, occurrenceId, paymentId, month });
-  return { billId, occurrenceId, paymentId };
+  return { billId, occurrenceId: occurrenceId || null, paymentId };
 }
 
 export async function archiveBill(input, repository = billsRepository) {
