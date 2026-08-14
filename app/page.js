@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { getLedgerBills, groupLedgerBills, normalizeLedgerMonth, summarizeLedgerBills } from '../src/ledger-bills-data.js';
+import { billFilterQuery, getBillFilters } from '../src/bills/filters.js';
 import {
   addBillAction,
   addPaymentAction,
@@ -20,30 +21,25 @@ const displayDate = (date) => date ? new Intl.DateTimeFormat('en-US', { timeZone
 const invalidCategory = (value) => ['business', 'personal'].includes(String(value ?? '').trim().toLowerCase());
 const displayCategory = (value) => !value || invalidCategory(value) ? 'Needs category' : value;
 const anchorId = (value) => `bill-${String(value ?? '').replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+const blankTokens = new Set(['blank', 'empty', '(blank)']);
 function monthName(value) { return new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', month: 'long', year: 'numeric' }).format(new Date(`${value}-01T00:00:00Z`)); }
 function monthOptions(selectedMonth) { const cursor = new Date('2026-04-01T00:00:00Z'); const end = new Date(); end.setUTCMonth(Math.max(end.getUTCMonth() + 6, 11)); const options = []; while (cursor <= end || cursor.toISOString().slice(0, 7) <= selectedMonth) { const value = cursor.toISOString().slice(0, 7); options.push({ value, label: monthName(value) }); cursor.setUTCMonth(cursor.getUTCMonth() + 1); } return options; }
-function getFilters(params) {
-  return {
-    bill: String(params?.f_bill ?? '').trim(),
-    type: String(params?.f_type ?? '').trim(),
-    category: String(params?.f_category ?? '').trim(),
-    account: String(params?.f_account ?? '').trim(),
-    budget: String(params?.f_budget ?? '').trim(),
-    actual: String(params?.f_actual ?? '').trim(),
-    due: String(params?.f_due ?? '').trim(),
-    status: String(params?.f_status ?? '').trim(),
-  };
-}
-function filterQuery(filters) {
-  const query = new URLSearchParams();
-  for (const [key, value] of Object.entries(filters)) if (value) query.set(`f_${key}`, value);
-  return query.toString();
-}
-function includes(value, needle) { return !needle || String(value ?? '').toLowerCase().includes(needle.toLowerCase()); }
-function exact(value, needle) { return !needle || String(value ?? '').trim().toLowerCase() === needle.trim().toLowerCase(); }
-function moneyIncludes(value, needle, emptyLabel) {
+function isBlank(value) { return value === null || value === undefined || String(value).trim() === ''; }
+function wantsBlank(needle) { return blankTokens.has(String(needle ?? '').trim().toLowerCase()); }
+function includes(value, needle) {
   if (!needle) return true;
-  if (value === null || value === undefined) return includes(emptyLabel, needle);
+  if (wantsBlank(needle)) return isBlank(value);
+  return String(value ?? '').toLowerCase().includes(needle.toLowerCase());
+}
+function exact(value, needle) {
+  if (!needle) return true;
+  if (wantsBlank(needle)) return isBlank(value);
+  return String(value ?? '').trim().toLowerCase() === needle.trim().toLowerCase();
+}
+function moneyIncludes(value, needle) {
+  if (!needle) return true;
+  if (wantsBlank(needle)) return isBlank(value);
+  if (isBlank(value)) return false;
   return includes(value, needle) || includes(money.format(value), needle);
 }
 function actualSource(bill) {
@@ -55,11 +51,11 @@ function actualSource(bill) {
 function applyFilters(rows, filters) {
   return rows.filter((bill) => includes(bill.payee, filters.bill)
     && exact(bill.type, filters.type)
-    && includes(displayCategory(bill.category), filters.category)
+    && (wantsBlank(filters.category) ? isBlank(bill.category) : includes(displayCategory(bill.category), filters.category))
     && exact(bill.account, filters.account)
-    && moneyIncludes(bill.budget, filters.budget, 'Enter amount')
-    && moneyIncludes(bill.actualAmount, filters.actual, 'Blank')
-    && (includes(bill.nextDue, filters.due) || includes(displayDate(bill.nextDue), filters.due))
+    && moneyIncludes(bill.budget, filters.budget)
+    && moneyIncludes(bill.actualAmount, filters.actual)
+    && (wantsBlank(filters.due) ? isBlank(bill.nextDue) : (includes(bill.nextDue, filters.due) || includes(displayDate(bill.nextDue), filters.due)))
     && exact(bill.status, filters.status));
 }
 
@@ -70,8 +66,8 @@ export default async function BillsPage({ searchParams }) {
   let loadError = null;
   try { rows = await getLedgerBills({ selectedMonth }); } catch (error) { loadError = error.message; }
   const summary = summarizeLedgerBills(rows);
-  const filters = getFilters(params);
-  const returnQuery = filterQuery(filters);
+  const filters = getBillFilters(params);
+  const returnQuery = billFilterQuery(filters);
   const filterSuffix = returnQuery ? `&${returnQuery}` : '';
   const filteredRows = applyFilters(rows, filters);
   const selectedKey = params?.partial || params?.edit;
@@ -88,14 +84,14 @@ export default async function BillsPage({ searchParams }) {
 
     <form method="get" className="bill-filters" aria-label="Bill column filters">
       <input type="hidden" name="month" value={selectedMonth}/>
-      <label>Bill<input name="f_bill" defaultValue={filters.bill}/></label>
-      <label>Type<input name="f_type" defaultValue={filters.type}/></label>
-      <label>Category<input name="f_category" defaultValue={filters.category}/></label>
-      <label>Account<input name="f_account" defaultValue={filters.account}/></label>
-      <label>Budget<input name="f_budget" defaultValue={filters.budget}/></label>
-      <label>Actual<input name="f_actual" defaultValue={filters.actual}/></label>
-      <label>Due Date<input name="f_due" defaultValue={filters.due}/></label>
-      <label>Status<input name="f_status" defaultValue={filters.status}/></label>
+      <label>Bill<input name="f_bill" defaultValue={filters.bill} placeholder="Use blank for empty"/></label>
+      <label>Type<input name="f_type" defaultValue={filters.type} placeholder="Use blank for empty"/></label>
+      <label>Category<input name="f_category" defaultValue={filters.category} placeholder="Use blank for empty"/></label>
+      <label>Account<input name="f_account" defaultValue={filters.account} placeholder="Use blank for empty"/></label>
+      <label>Budget<input name="f_budget" defaultValue={filters.budget} placeholder="Use blank for empty"/></label>
+      <label>Actual<input name="f_actual" defaultValue={filters.actual} placeholder="Use blank for empty"/></label>
+      <label>Due Date<input name="f_due" defaultValue={filters.due} placeholder="Use blank for empty"/></label>
+      <label>Status<input name="f_status" defaultValue={filters.status} placeholder="Use blank for empty"/></label>
       <div className="filter-actions"><button type="submit">Apply Filters</button><Link className="button ghost" href={`/?month=${selectedMonth}`}>Clear</Link></div>
     </form>
 
