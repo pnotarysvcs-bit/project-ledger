@@ -237,10 +237,10 @@ export async function deletePayment(input, repository = billsRepository) {
   const occurrenceId = String(input.occurrenceId ?? '').trim();
   const paymentId = String(input.paymentId ?? '').trim();
   const month = String(input.month ?? '').trim();
-  if (!billId || !occurrenceId || !paymentId) throw new Error('Payment, occurrence, and bill identifiers are required.');
+  if (!billId || !paymentId) throw new Error('Payment and bill identifiers are required.');
   if (!validMonth(month)) throw new Error('A valid month is required.');
   await repository.removePayment({ billId, occurrenceId, paymentId, month });
-  return { billId, occurrenceId, paymentId };
+  return { billId, occurrenceId: occurrenceId || null, paymentId };
 }
 
 export async function archiveBill(input, repository = billsRepository) {
