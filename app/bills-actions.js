@@ -94,6 +94,22 @@ export async function submitBillAction(data) {
   const rows = await getLedgerBills({ selectedMonth: common.month });
   const bill = rows.find((row) => row.id === common.id
     && (row.occurrenceId === common.occurrenceId || (!common.occurrenceId && row.nextDue === dueDate)));
+
+  if (value(data, 'undoSubmitted') === 'yes') {
+    if (!bill || bill.status !== 'submitted' || !bill.transactions?.length) {
+      throw new Error('There is no submitted payment available to undo for this bill and month.');
+    }
+    const latestPayment = [...bill.transactions]
+      .sort((a, b) => String(a.paymentDate ?? '').localeCompare(String(b.paymentDate ?? '')))
+      .at(-1);
+    await deletePayment({
+      ...common,
+      paymentId: latestPayment.id,
+      reason: 'Undo Submitted',
+    });
+    redirectToBills({ ...common, message: 'Submitted status undone.' });
+  }
+
   if (!bill || bill.effectiveAmount === null || bill.remaining <= 0) {
     throw new Error('This bill is already submitted or has no amount.');
   }
@@ -134,7 +150,7 @@ export async function updatePaymentAction(data) {
 
 export async function removePaymentAction(data) {
   const common = commonInput(data);
-  await deletePayment({ ...common, paymentId: value(data, 'paymentId') });
+  await deletePayment({ ...common, paymentId: value(data, 'paymentId'), reason: 'Payment removed by user' });
   redirectToBills({ ...common, message: 'Payment removed.' });
 }
 
