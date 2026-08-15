@@ -84,7 +84,7 @@ test('create bill writes master and one monthly occurrence through repository bo
     frequency: 'monthly', budget: '120', actualAmount: '', nextDue: '2026-08-20', notes: 'new bill',
   }, repository);
 
-  assert.deepEqual(result, { billId: 'bill-new', occurrenceId: 'occ-new' });
+  assert.deepEqual(result, { billId: 'bill-new', occurrenceId: 'occ-new', month: '2026-08' });
   const masterCreate = repository.calls.find(([name]) => name === 'createMasterBill')[1];
   assert.equal(masterCreate.bill_type, 'Personal');
   assert.equal(masterCreate.category, 'Utilities');
@@ -92,6 +92,22 @@ test('create bill writes master and one monthly occurrence through repository bo
   const occurrenceCreate = repository.calls.find(([name]) => name === 'createOccurrence')[1];
   assert.equal(occurrenceCreate.occurrence_budget_amount, 120);
   assert.equal(occurrenceCreate.actual_amount, null);
+});
+
+test('new bill uses the Due Date month instead of the month currently displayed', async () => {
+  const repository = fakeRepository();
+  const result = await createBill({
+    month: '2026-08', name: 'Clayton Medical Center', type: 'Personal', category: 'Medical', account: 'TCU',
+    frequency: 'one-time', budget: '100', actualAmount: '', nextDue: '2026-09-05', notes: '',
+  }, repository);
+
+  assert.equal(result.month, '2026-09');
+  const masterCreate = repository.calls.find(([name]) => name === 'createMasterBill')[1];
+  assert.equal(masterCreate.start_month, '2026-09-01');
+  assert.equal(masterCreate.due_day, 5);
+  const occurrenceCreate = repository.calls.find(([name]) => name === 'createOccurrence')[1];
+  assert.equal(occurrenceCreate.month, '2026-09-01');
+  assert.equal(occurrenceCreate.due_date, '2026-09-05');
 });
 
 test('record payment resolves occurrence then persists one payment', async () => {
