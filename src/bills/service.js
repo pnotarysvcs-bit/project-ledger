@@ -213,27 +213,44 @@ export async function recordBulkActuals(input, repository = billsRepository) {
   const month = String(input.month ?? '').trim();
   if (!validMonth(month)) throw new Error('A valid month is required.');
 
-  const eligible = (input.bills ?? []).filter((bill) => bill.occurrenceId
-    && bill.actualAmount === null
+  const eligible = (input.bills ?? []).filter((bill) => bill.actualAmount === null
     && bill.budget !== null
     && Number.isFinite(Number(bill.budget)));
 
+  const prepared = [];
   for (const bill of eligible) {
-    await repository.updateOccurrence({
-      billId: bill.id,
-      occurrenceId: bill.occurrenceId,
-      month,
-    }, {
-      actual_amount: Number(bill.budget),
-      migration_incomplete: false,
-    });
+    let occurrenceId = bill.occurrenceId;
+    if (occurrenceId) {
+      await repository.updateOccurrence({
+        billId: bill.id,
+        occurrenceId,
+        month,
+      }, {
+        actual_amount: Number(bill.budget),
+        migration_incomplete: false,
+      });
+    } else {
+      const occurrence = await repository.createOccurrence({
+        bill_id: bill.id,
+        month: `${month}-01`,
+        status: null,
+        occurrence_budget_amount: Number(bill.budget),
+        actual_amount: Number(bill.budget),
+        due_date: bill.nextDue,
+        installment_key: bill.installmentKey ?? bill.nextDue,
+        migration_incomplete: false,
+      });
+      occurrenceId = occurrence?.id ?? null;
+      if (!occurrenceId) throw new Error(`The monthly occurrence for ${bill.payee ?? 'a filtered bill'} could not be created.`);
+    }
+    prepared.push({ bill, occurrenceId });
   }
 
-  const payments = eligible
-    .filter((bill) => Number(bill.remaining ?? 0) > 0)
-    .map((bill) => ({
+  const payments = prepared
+    .filter(({ bill }) => Number(bill.remaining ?? 0) > 0)
+    .map(({ bill, occurrenceId }) => ({
       bill_id: bill.id,
-      occurrence_id: bill.occurrenceId,
+      occurrence_id: occurrenceId,
       amount: Number(bill.remaining),
       payment_month: `${month}-01`,
       payment_date: bill.nextDue,
