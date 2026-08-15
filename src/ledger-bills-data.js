@@ -256,24 +256,30 @@ export function applyOverdueCarryForward(rows, bills, occurrences, payments, { a
     });
     if (amounts.effectiveAmount === null || (amounts.remaining ?? 0) <= 0) continue;
 
-    const current = overdueByBill.get(occurrence.bill_id) ?? { count: 0, outstanding: 0 };
-    current.count += 1;
-    current.outstanding += amounts.remaining ?? 0;
-    overdueByBill.set(occurrence.bill_id, current);
+    const list = overdueByBill.get(occurrence.bill_id) ?? [];
+    list.push({
+      id: occurrence.id,
+      month: String(occurrence.month).slice(0, 7),
+      dueDate: occurrence.due_date,
+      budget,
+      actualAmount,
+      effectiveAmount: amounts.effectiveAmount,
+      submitted: amounts.submitted,
+      remaining: amounts.remaining,
+    });
+    overdueByBill.set(occurrence.bill_id, list);
   }
 
   return rows.map((row) => {
-    const overdue = overdueByBill.get(row.id);
-    if (!overdue?.count) return { ...row, overdueCount: 0, overdueOutstanding: 0 };
-
-    const label = overdue.count > 1 ? `Overdue ×${overdue.count}` : 'Overdue';
-    const preserveCurrentStatus = ['submitted', 'partial', 'incomplete'].includes(row.status);
+    const currentMonth = String(row.nextDue ?? '').slice(0, 7);
+    const priorOverdueOccurrences = (overdueByBill.get(row.id) ?? [])
+      .filter((occurrence) => occurrence.month < currentMonth)
+      .sort((a, b) => a.dueDate.localeCompare(b.dueDate));
     return {
       ...row,
-      payee: `${row.payee} · ${label}`,
-      status: preserveCurrentStatus ? row.status : 'overdue',
-      overdueCount: overdue.count,
-      overdueOutstanding: overdue.outstanding,
+      overdueOccurrences: priorOverdueOccurrences,
+      overdueCount: priorOverdueOccurrences.length,
+      overdueOutstanding: priorOverdueOccurrences.reduce((sum, occurrence) => sum + occurrence.remaining, 0),
     };
   });
 }
@@ -325,7 +331,8 @@ export function summarizeLedgerBills(rows, asOf = new Date()) {
       summary.overdue += Number(bill.overdueOutstanding ?? 0);
       summary.overdueCount += carryCount;
       seenOverdueBills.add(bill.id);
-    } else if (carryCount === 0 && bill.status === 'overdue') {
+    }
+    if (bill.status === 'overdue') {
       summary.overdue += bill.remaining ?? 0;
       summary.overdueCount += 1;
     }
@@ -369,7 +376,8 @@ export function getLedgerOverview(rows) {
       overdueCount += carryCount;
       overdueAmount += Number(bill.overdueOutstanding ?? 0);
       seenOverdueBills.add(bill.id);
-    } else if (carryCount === 0 && bill.status === 'overdue') {
+    }
+    if (bill.status === 'overdue') {
       overdueCount += 1;
       overdueAmount += bill.remaining ?? 0;
     }
