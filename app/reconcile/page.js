@@ -10,7 +10,19 @@ export const dynamic = 'force-dynamic';
 const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
 const AMOUNT_TOLERANCE = 5;
 const REVIEW_STATUSES = ['NEW', 'Unmatched', 'Amount Variance'];
-const STATUS_FILTERS = ['all', 'Matched', 'needs-review', 'Unmatched', 'NEW', 'Amount Variance', 'Dismissed'];
+const STATUS_FILTERS = ['all', 'Matched', 'needs-review', 'Incomplete Match', 'Unmatched', 'NEW', 'Amount Variance', 'Dismissed'];
+
+function isIncompleteMatched(row) {
+  return row.match_status === 'Matched' && !row.payment_id && (!row.bill_id || !row.occurrence_id);
+}
+
+function needsReview(row) {
+  return REVIEW_STATUSES.includes(row.match_status) || isIncompleteMatched(row);
+}
+
+function displayMatchStatus(row) {
+  return isIncompleteMatched(row) ? 'Incomplete Match' : row.match_status;
+}
 
 async function getBillsWithAliases(selectedMonth) {
   const bills = await getLedgerBills({ selectedMonth });
@@ -337,7 +349,7 @@ async function completeReconciliation(formData) {
   const rows = await supabaseRequest(`ledger_statement_transactions?select=*&import_id=eq.${encodeURIComponent(importId)}`);
   if (!rows.length) redirect(`/reconcile?import=${importId}&notice=This+statement+has+no+parsed+transactions.`);
 
-  const unresolved = rows.filter((row) => REVIEW_STATUSES.includes(row.match_status));
+  const unresolved = rows.filter(needsReview);
   if (unresolved.length) {
     redirect(`/reconcile?import=${importId}&notice=Resolve+${unresolved.length}+review+item${unresolved.length === 1 ? '' : 's'}+before+completing+reconciliation.`);
   }
@@ -435,7 +447,8 @@ function uniqueBillOccurrences(rows) {
 
 function matchesStatusFilter(row, filter) {
   if (filter === 'all') return true;
-  if (filter === 'needs-review') return REVIEW_STATUSES.includes(row.match_status);
+  if (filter === 'needs-review') return needsReview(row);
+  if (filter === 'Incomplete Match') return isIncompleteMatched(row);
   return row.match_status === filter;
 }
 
@@ -475,7 +488,7 @@ export default async function ReconcilePage({ searchParams }) {
     </form>;
   };
 
-  const unresolvedCount = rows.filter((row) => REVIEW_STATUSES.includes(row.match_status)).length;
+  const unresolvedCount = rows.filter(needsReview).length;
   const visibleRows = rows.filter((row) => matchesStatusFilter(row, matchStatusFilter));
 
   return <>
@@ -500,7 +513,7 @@ export default async function ReconcilePage({ searchParams }) {
         <header><strong>Review transactions</strong><span>{rows.length} posted debits · {unresolvedCount} need review</span></header>
         <form method="get" className="reconcile-status-filter" aria-label="Reconciliation match status filter">
           <input type="hidden" name="import" value={item.id}/>
-          <label>Match Status<select name="matchStatus" defaultValue={matchStatusFilter}><option value="all">All statuses</option><option value="Matched">Matched</option><option value="needs-review">Needs Review</option><option value="Unmatched">Unmatched</option><option value="NEW">NEW</option><option value="Amount Variance">Amount Variance</option><option value="Dismissed">Dismissed</option></select></label>
+          <label>Match Status<select name="matchStatus" defaultValue={matchStatusFilter}><option value="all">All statuses</option><option value="Matched">Matched</option><option value="needs-review">Needs Review</option><option value="Incomplete Match">Incomplete Match</option><option value="Unmatched">Unmatched</option><option value="NEW">NEW</option><option value="Amount Variance">Amount Variance</option><option value="Dismissed">Dismissed</option></select></label>
           <button type="submit">Apply Filter</button>
           <Link className="button ghost" href={`/reconcile?import=${encodeURIComponent(item.id)}`}>Clear</Link>
           <span>{visibleRows.length} of {rows.length} transactions</span>
@@ -511,7 +524,7 @@ export default async function ReconcilePage({ searchParams }) {
             <td>{row.expected_amount == null ? '—' : money.format(row.expected_amount)}</td>
             <td>{money.format(row.amount)}</td>
             <td>{row.transaction_date}</td>
-            <td><span className={`status ${row.match_status.toLowerCase().replace(/\s/g,'-')}`}>{row.match_status}</span></td>
+            <td><span className={`status ${displayMatchStatus(row).toLowerCase().replace(/\s/g,'-')}`}>{displayMatchStatus(row)}</span></td>
             <td>{row.match_status === 'Dismissed' ? (row.decision_note ?? 'Excluded') : <div className="inline-payment">{reviewEditor(row)}{REVIEW_STATUSES.includes(row.match_status) && <form action={resolveTransaction} className="inline-form add-from-review"><input type="hidden" name="id" value={row.id}/><input type="hidden" name="importId" value={item.id}/><input type="hidden" name="decision" value="approve-new"/><label>Bill name<input name="billName" defaultValue={row.raw_description} required/></label><label>Category<input name="category" required/></label><label>Account<input name="account" placeholder="TCU / TCUB / CAPITAL ONE" required/></label><button type="submit">Add New Bill &amp; Match</button></form>}</div>}</td>
           </tr>)}
         </tbody></table></div>
