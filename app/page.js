@@ -72,7 +72,7 @@ export default async function BillsPage({ searchParams }) {
   const filterSuffix = returnQuery ? `&${returnQuery}` : '';
   const filteredRows = applyFilters(rows, filters);
   const bulkActualEligibleCount = returnQuery
-    ? filteredRows.filter((bill) => bill.occurrenceId && bill.actualAmount === null && bill.budget !== null).length
+    ? filteredRows.filter((bill) => bill.actualAmount === null && bill.budget !== null).length
     : 0;
   const selectedKey = params?.partial || params?.edit;
   const selected = rows.find((bill) => bill.rowKey === selectedKey || bill.occurrenceId === selectedKey);
