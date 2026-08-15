@@ -53,6 +53,22 @@ async function rememberAlias(transaction, billId) {
   });
 }
 
+function possibleMasterDuplicates(description, masters = [], aliases = []) {
+  const target = normalizePayee(description);
+  if (!target) return [];
+  const aliasBillIds = new Set(aliases
+    .filter((alias) => normalizePayee(alias.alias_raw || alias.alias_normalized) === target)
+    .map((alias) => alias.bill_id));
+  return masters.filter((master) => {
+    const candidate = normalizePayee(master.bill_name);
+    if (!candidate) return false;
+    if (candidate === target || aliasBillIds.has(master.id)) return true;
+    const shorter = Math.min(candidate.length, target.length);
+    const longer = Math.max(candidate.length, target.length);
+    return shorter >= 6 && shorter / longer >= 0.7 && (candidate.includes(target) || target.includes(candidate));
+  });
+}
+
 function reconciliationBeforeState(transaction) {
   return {
     amount: Number(transaction.amount),
@@ -249,6 +265,17 @@ async function resolveTransaction(formData) {
   }
 
   if (decision === 'approve-new') {
+    const [masters, aliases] = await Promise.all([
+      supabaseRequest('ledger_bills?select=id,bill_name,is_active,archived_at,account'),
+      supabaseRequest('ledger_bill_aliases?select=bill_id,alias_raw,alias_normalized'),
+    ]);
+    const possibleDuplicates = possibleMasterDuplicates(transaction.raw_description, masters, aliases);
+    if (possibleDuplicates.length && formData.get('confirmDuplicate') !== 'yes') {
+      const names = possibleDuplicates
+        .map((candidate) => `${candidate.bill_name} (${candidate.is_active ? 'Active' : 'Archived'})`)
+        .join(', ');
+      redirect(`/reconcile?import=${importId}&notice=${encodeURIComponent(`Possible existing Master Bill: ${names}. Review the warning and confirm only if this is genuinely a separate bill.`)}`);
+    }
     const billName = String(formData.get('billName') ?? transaction.raw_description).trim();
     const category = String(formData.get('category') ?? '').trim();
     const account = String(formData.get('account') ?? '').trim().toUpperCase();
@@ -461,17 +488,27 @@ export default async function ReconcilePage({ searchParams }) {
   let item = null;
   let rows = [];
   let billOptions = [];
+  let masterBills = [];
+  let masterAliases = [];
   let undoAction = null;
 
   if (importId) {
     item = (await supabaseRequest(`ledger_statement_imports?select=*&id=eq.${encodeURIComponent(importId)}`))[0] ?? null;
     rows = item ? await supabaseRequest(`ledger_statement_transactions?select=*&import_id=eq.${encodeURIComponent(importId)}&order=transaction_date.asc`) : [];
-    if (item) billOptions = uniqueBillOccurrences(await getLedgerBills({ selectedMonth: item.effective_month.slice(0, 7) }));
+    if (item) {
+      billOptions = uniqueBillOccurrences(await getLedgerBills({ selectedMonth: item.effective_month.slice(0, 7) }));
+      [masterBills, masterAliases] = await Promise.all([
+        supabaseRequest('ledger_bills?select=id,bill_name,is_active,archived_at,account'),
+        supabaseRequest('ledger_bill_aliases?select=bill_id,alias_raw,alias_normalized'),
+      ]);
+    }
     if (item?.status !== 'completed') {
       const latestAction = (await supabaseRequest(`ledger_reconciliation_actions?select=id,action_type,reversed_at,created_at&import_id=eq.${encodeURIComponent(importId)}&order=created_at.desc&limit=1`))[0] ?? null;
       undoAction = latestAction && !latestAction.reversed_at ? latestAction : null;
     }
   }
+
+  const duplicateCandidatesFor = (row) => possibleMasterDuplicates(row.raw_description, masterBills, masterAliases);
 
   const reviewEditor = (row) => {
     if (row.payment_id) return <span>{row.decision_note ?? 'Already linked to a payment.'}</span>;
@@ -525,7 +562,7 @@ export default async function ReconcilePage({ searchParams }) {
             <td>{money.format(row.amount)}</td>
             <td>{row.transaction_date}</td>
             <td><span className={`status ${displayMatchStatus(row).toLowerCase().replace(/\s/g,'-')}`}>{displayMatchStatus(row)}</span></td>
-            <td>{row.match_status === 'Dismissed' ? (row.decision_note ?? 'Excluded') : <div className="inline-payment">{reviewEditor(row)}{REVIEW_STATUSES.includes(row.match_status) && <form action={resolveTransaction} className="inline-form add-from-review"><input type="hidden" name="id" value={row.id}/><input type="hidden" name="importId" value={item.id}/><input type="hidden" name="decision" value="approve-new"/><label>Bill name<input name="billName" defaultValue={row.raw_description} required/></label><label>Category<input name="category" required/></label><label>Account<input name="account" placeholder="TCU / TCUB / CAPITAL ONE" required/></label><button type="submit">Add New Bill &amp; Match</button></form>}</div>}</td>
+            <td>{row.match_status === 'Dismissed' ? (row.decision_note ?? 'Excluded') : <div className="inline-payment">{reviewEditor(row)}{REVIEW_STATUSES.includes(row.match_status) && <form action={resolveTransaction} className="inline-form add-from-review"><input type="hidden" name="id" value={row.id}/><input type="hidden" name="importId" value={item.id}/><input type="hidden" name="decision" value="approve-new"/><label>Bill name<input name="billName" defaultValue={row.raw_description} required/></label><label>Category<input name="category" required/></label><label>Account<input name="account" placeholder="TCU / TCUB / CAPITAL ONE" required/></label>{duplicateCandidatesFor(row).length > 0 && <div className="duplicate-warning"><strong>Possible existing Master Bill</strong><ul>{duplicateCandidatesFor(row).map((candidate) => <li key={candidate.id}>{candidate.bill_name} · {candidate.is_active ? 'Active' : 'Archived'} · {candidate.account}</li>)}</ul><label><input name="confirmDuplicate" type="checkbox" value="yes" required/> I reviewed the existing bill and want to continue creating a separate Master Bill.</label></div>}<button type="submit">Add New Bill &amp; Match</button></form>}</div>}</td>
           </tr>)}
         </tbody></table></div>
       </section>

@@ -5,6 +5,7 @@ import {
   changePayment,
   createBill,
   deletePayment,
+  recordBulkActuals,
   recordBulkPayments,
   recordPayment,
   updateBill,
@@ -122,6 +123,55 @@ test('bulk submit persists only eligible previous-month balances through reposit
     bill_id: 'a', occurrence_id: 'occ-a', amount: 25, payment_month: '2026-07-01',
     payment_date: '2026-07-10', funding_account: 'TCU', notes: 'Bulk payment submitted',
   });
+});
+
+test('filtered bulk actuals copies budget only into blank actuals and submits remaining balances', async () => {
+  const repository = fakeRepository();
+  const result = await recordBulkActuals({
+    month: '2026-05',
+    bills: [
+      { id: 'a', occurrenceId: 'occ-a', budget: 100, actualAmount: null, remaining: 100, nextDue: '2026-05-10', account: 'TCU' },
+      { id: 'b', occurrenceId: 'occ-b', budget: 75, actualAmount: 70, remaining: 70, nextDue: '2026-05-12', account: 'TCU' },
+      { id: 'c', occurrenceId: null, budget: 50, actualAmount: null, remaining: 50, nextDue: '2026-05-15', account: 'TCUB' },
+      { id: 'd', occurrenceId: 'occ-d', budget: 25, actualAmount: null, remaining: 0, nextDue: '2026-05-18', account: 'TCU' },
+    ],
+  }, repository);
+
+  assert.deepEqual(result, { count: 3, paymentCount: 2 });
+  const occurrenceUpdates = repository.calls.filter(([name]) => name === 'updateOccurrence');
+  assert.deepEqual(occurrenceUpdates, [
+    ['updateOccurrence', { billId: 'a', occurrenceId: 'occ-a', month: '2026-05' }, { actual_amount: 100, migration_incomplete: false }],
+    ['updateOccurrence', { billId: 'd', occurrenceId: 'occ-d', month: '2026-05' }, { actual_amount: 25, migration_incomplete: false }],
+  ]);
+  const occurrenceCreate = repository.calls.find(([name, payload]) => name === 'createOccurrence' && payload.bill_id === 'c')[1];
+  assert.deepEqual(occurrenceCreate, {
+    bill_id: 'c',
+    month: '2026-05-01',
+    status: null,
+    occurrence_budget_amount: 50,
+    actual_amount: 50,
+    due_date: '2026-05-15',
+    installment_key: '2026-05-15',
+    migration_incomplete: false,
+  });
+  const payloads = repository.calls.find(([name]) => name === 'addPayments')[1];
+  assert.deepEqual(payloads, [{
+    bill_id: 'a',
+    occurrence_id: 'occ-a',
+    amount: 100,
+    payment_month: '2026-05-01',
+    payment_date: '2026-05-10',
+    funding_account: 'TCU',
+    notes: 'Filtered bulk actual submitted',
+  }, {
+    bill_id: 'c',
+    occurrence_id: 'occ-new',
+    amount: 50,
+    payment_month: '2026-05-01',
+    payment_date: '2026-05-15',
+    funding_account: 'TCUB',
+    notes: 'Filtered bulk actual submitted',
+  }]);
 });
 
 test('bulk submit rejects the current or a future month', async () => {
