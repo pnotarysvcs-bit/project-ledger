@@ -62,3 +62,14 @@ test('Bulk Submit Actuals is filter-scoped and preserves existing actual amounts
   assert.match(serviceSource, /actual_amount: Number\(bill\.budget\)/);
   assert.match(serviceSource, /Filtered bulk actual submitted/);
 });
+
+
+test('Bills workspace renders prior overdue occurrences separately from current bill status', () => {
+  assert.match(pageSource, /<strong>Prior Overdue Bills<\/strong>/);
+  assert.match(pageSource, /priorOverdueRows\.map/);
+  assert.match(pageSource, /overdue\.month/);
+  assert.match(pageSource, /overdue\.dueDate/);
+  assert.match(pageSource, /overdue\.remaining/);
+  assert.match(pageSource, /bill\.overdueCount > 0/);
+  assert.doesNotMatch(pageSource, /bill\.payee.*· Overdue/s);
+});
