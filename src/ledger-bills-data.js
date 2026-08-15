@@ -236,8 +236,26 @@ export function applyOverdueCarryForward(rows, bills, occurrences, payments, { a
     }
   }
 
-  const overdueByBill = new Map();
+  // Monthly, quarterly, annual, and one-time bills represent one charge per
+  // reporting month. If legacy edits produced duplicate rows, prefer the row
+  // that owns a payment so an already-paid bill cannot reappear as overdue.
+  // Bi-weekly bills intentionally retain every installment.
+  const occurrencesByBillMonth = new Map();
   for (const occurrence of occurrences) {
+    const key = `${occurrence.bill_id}:${String(occurrence.month).slice(0, 7)}`;
+    const list = occurrencesByBillMonth.get(key) ?? [];
+    list.push(occurrence);
+    occurrencesByBillMonth.set(key, list);
+  }
+  const canonicalOccurrences = [...occurrencesByBillMonth.values()].flatMap((list) => {
+    const bill = billsById.get(list[0]?.bill_id);
+    if (bill?.frequency === 'bi-weekly' || list.length <= 1) return list;
+    const paid = list.find((occurrence) => (paymentsByOccurrence.get(occurrence.id)?.length ?? 0) > 0);
+    return [paid ?? [...list].sort((a, b) => String(a.due_date ?? '').localeCompare(String(b.due_date ?? '')))[0]];
+  });
+
+  const overdueByBill = new Map();
+  for (const occurrence of canonicalOccurrences) {
     if (!occurrence?.due_date || occurrence.due_date >= today) continue;
     const bill = billsById.get(occurrence.bill_id);
     if (!bill) continue;
