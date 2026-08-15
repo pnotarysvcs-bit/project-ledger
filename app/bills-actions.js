@@ -3,15 +3,21 @@
 import { redirect } from 'next/navigation';
 import { revalidatePath } from 'next/cache';
 import { getLedgerBills, normalizeLedgerMonth } from '../src/ledger-bills-data.js';
+import { applyBillFilters, billFilterQuery, getBillFilters } from '../src/bills/filters.js';
 import {
   archiveBill,
   changePayment,
   createBill,
   deletePayment,
+  recordBulkActuals,
   recordBulkPayments,
   recordPayment,
   updateBill,
 } from '../src/bills/service.js';
+
+const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
+const displayDate = (date) => date ? new Intl.DateTimeFormat('en-US', { timeZone: 'UTC' }).format(new Date(`${date}T00:00:00Z`)) : '-';
+const displayCategory = (category) => !category || ['business', 'personal'].includes(String(category).trim().toLowerCase()) ? 'Needs category' : category;
 
 function value(data, key) {
   return String(data.get(key) ?? '');
@@ -117,6 +123,28 @@ export async function bulkSubmitAction(data) {
     bills: rows,
   });
   redirectToBills({ month, message: `${result.count} bills submitted.` });
+}
+
+export async function bulkSubmitActualsAction(data) {
+  const month = normalizeLedgerMonth(value(data, 'month'));
+  const filters = getBillFilters(Object.fromEntries(data.entries()));
+  const returnQuery = billFilterQuery(filters);
+  if (!returnQuery) throw new Error('Apply at least one bill filter before using Bulk Submit Actuals.');
+
+  const rows = await getLedgerBills({ selectedMonth: month });
+  const filteredRows = applyBillFilters(rows, filters, {
+    moneyFormatter: money,
+    displayDate,
+    displayCategory,
+  });
+  const result = await recordBulkActuals({ month, bills: filteredRows });
+  redirectToBills({
+    month,
+    returnQuery,
+    message: result.count
+      ? `${result.count} filtered bill${result.count === 1 ? '' : 's'} updated: Actual equals Budget and status is Submitted.`
+      : 'No filtered bills were eligible. Existing Actual amounts were preserved.',
+  });
 }
 
 export async function updatePaymentAction(data) {
