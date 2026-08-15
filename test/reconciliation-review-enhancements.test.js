@@ -81,3 +81,15 @@ test('Master Bill options are alphabetized and Undo has a prominent dedicated st
 test('matched reconciliation rows collapse the editable review controls', () => {
   assert.match(styleSource, /tr:has\(\.status\.matched\) td:nth-child\(6\) \.inline-payment \{ display: none; \}/);
 });
+
+
+test('statement-created bills receive advisory Active and Archive duplicate warnings without a hard stop', () => {
+  assert.match(pageSource, /possibleMasterDuplicates/);
+  assert.match(pageSource, /ledger_bills\?select=id,bill_name,is_active,archived_at,account/);
+  assert.match(pageSource, /Possible existing Master Bill/);
+  assert.match(pageSource, /candidate\.is_active \? 'Active' : 'Archived'/);
+  assert.match(pageSource, /name="confirmDuplicate"/);
+  assert.match(pageSource, /want to continue creating a separate Master Bill/);
+  assert.match(pageSource, /formData\.get\('confirmDuplicate'\) !== 'yes'/);
+  assert.match(pageSource, /redirect\(.*Possible existing Master Bill/s);
+});
