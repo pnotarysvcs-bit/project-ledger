@@ -78,3 +78,9 @@ test('Bills workspace renders prior overdue occurrences separately from current 
   assert.match(pageSource, /bill\.overdueCount > 0/);
   assert.doesNotMatch(pageSource, /bill\.payee.*· Overdue/s);
 });
+
+test('Prior Overdue Bills are sorted by Due Date and Bill after filters are applied', () => {
+  assert.match(pageSource, /\.sort\(\(left, right\) => \{/);
+  assert.match(pageSource, /left\.dueDate/);
+  assert.match(pageSource, /left\.payee/);
+});

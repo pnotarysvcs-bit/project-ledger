@@ -80,7 +80,10 @@ export default async function BillsPage({ searchParams }) {
       type: bill.type,
       account: bill.account,
       frequency: bill.frequency,
-    })))
+    }))).sort((left, right) => {
+      const due = String(left.dueDate ?? '').localeCompare(String(right.dueDate ?? ''));
+      return due || String(left.payee ?? '').localeCompare(String(right.payee ?? ''));
+    })
     : [];
   const bulkActualEligibleCount = returnQuery
     ? filteredRows.filter((bill) => bill.actualAmount === null && bill.budget !== null).length

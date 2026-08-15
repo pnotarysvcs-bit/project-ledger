@@ -30,6 +30,11 @@ export function createBillsRepository(request = supabaseRequest) {
         const rows = await request(`ledger_bill_months?select=id,bill_id,month,occurrence_budget_amount,actual_amount,due_date,installment_key,migration_incomplete&bill_id=eq.${encodeURIComponent(billId)}&month=eq.${month}-01&due_date=eq.${dueDate}`);
         if (rows?.[0]) return rows[0];
       }
+      // A non-biweekly bill may have only one occurrence in a reporting month.
+      // Fall back to that occurrence when an edit changes its Due Date and the
+      // caller has no occurrence id, rather than creating a second monthly row.
+      const rows = await request(`ledger_bill_months?select=id,bill_id,month,occurrence_budget_amount,actual_amount,due_date,installment_key,migration_incomplete&bill_id=eq.${encodeURIComponent(billId)}&month=eq.${month}-01&order=created_at.asc&limit=1`);
+      if (rows?.[0]) return rows[0];
       return null;
     },
 

@@ -93,3 +93,19 @@ test('current submitted status is preserved while an older overdue occurrence re
   assert.equal(summary.overdueCount, 1);
   assert.equal(summary.overdue, 100);
 });
+
+test('a paid monthly occurrence suppresses an unpaid duplicate from prior overdue carry-forward', () => {
+  const paidAugust = { ...august, id: 'aug-paid', due_date: '2026-08-13', installment_key: '2026-08-13' };
+  const duplicateAugust = { ...august, id: 'aug-duplicate', due_date: '2026-08-20', installment_key: '2026-08-20' };
+  const september = { ...august, id: 'sep', month: '2026-09-01', due_date: '2026-09-05', installment_key: '2026-09-05' };
+  const payments = [{
+    id: 'p-aug', bill_id: 'b1', occurrence_id: 'aug-paid', amount: 100,
+    payment_date: '2026-08-10', payment_month: '2026-08-01', funding_account: 'TCU', notes: null,
+  }];
+  const asOf = new Date('2026-09-15T12:00:00Z');
+  const current = buildLedgerRows([{ ...bill, due_day: 5 }], [september], [], { selectedMonth: '2026-09', asOf });
+  const [row] = applyOverdueCarryForward(current, [bill], [paidAugust, duplicateAugust, september], payments, { asOf });
+
+  assert.equal(row.overdueCount, 0);
+  assert.deepEqual(row.overdueOccurrences, []);
+});
