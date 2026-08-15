@@ -6,6 +6,7 @@ import {
   addPaymentAction,
   archiveBillAction,
   bulkSubmitAction,
+  bulkSubmitActualsAction,
   editBillAction,
   removePaymentAction,
   submitBillAction,
@@ -70,6 +71,20 @@ export default async function BillsPage({ searchParams }) {
   const returnQuery = billFilterQuery(filters);
   const filterSuffix = returnQuery ? `&${returnQuery}` : '';
   const filteredRows = applyFilters(rows, filters);
+  const statusFilter = String(filters.status ?? '').trim().toLowerCase();
+  const priorOverdueRows = (!statusFilter || statusFilter === 'overdue')
+    ? applyFilters(rows, { ...filters, status: '' }).flatMap((bill) => (bill.overdueOccurrences ?? []).map((occurrence) => ({
+      ...occurrence,
+      billId: bill.id,
+      payee: bill.payee,
+      type: bill.type,
+      account: bill.account,
+      frequency: bill.frequency,
+    })))
+    : [];
+  const bulkActualEligibleCount = returnQuery
+    ? filteredRows.filter((bill) => bill.actualAmount === null && bill.budget !== null).length
+    : 0;
   const selectedKey = params?.partial || params?.edit;
   const selected = rows.find((bill) => bill.rowKey === selectedKey || bill.occurrenceId === selectedKey);
 
@@ -95,6 +110,47 @@ export default async function BillsPage({ searchParams }) {
       <div className="filter-actions"><button type="submit">Apply Filters</button><Link className="button ghost" href={`/?month=${selectedMonth}`}>Clear</Link></div>
     </form>
 
+    {returnQuery && <form action={bulkSubmitActualsAction} className="bulk-actuals-form">
+      <input type="hidden" name="month" value={selectedMonth}/>
+      {Object.entries(filters).map(([key, filterValue]) => <input key={key} type="hidden" name={`f_${key}`} value={filterValue}/>)}
+      <ConfirmButton
+        disabled={bulkActualEligibleCount === 0}
+        message={`Set Actual equal to Budget and submit ${bulkActualEligibleCount} filtered bill${bulkActualEligibleCount === 1 ? '' : 's'}?`}
+      >
+        Bulk Submit Actuals ({bulkActualEligibleCount})
+      </ConfirmButton>
+      <span>Applies only to filtered bills with a blank Actual amount; existing Actual amounts are preserved.</span>
+    </form>}
+
+    {priorOverdueRows.length > 0 && <section className="panel prior-overdue-panel">
+      <header><strong>Prior Overdue Bills</strong><span>{priorOverdueRows.length} {priorOverdueRows.length === 1 ? 'occurrence' : 'occurrences'}</span></header>
+      <div className="table-wrap"><table><thead><tr><th>Bill</th><th>Reporting Month</th><th>Due Date</th><th>Amount</th><th>Paid</th><th>Remaining</th><th>Status</th><th>Actions</th></tr></thead><tbody>
+        {priorOverdueRows.map((overdue) => {
+          const historicalRowKey = overdue.id ?? `${overdue.billId}:${overdue.dueDate}`;
+          return <tr key={historicalRowKey}>
+            <td><b>{overdue.payee}</b></td>
+            <td>{monthName(overdue.month)}</td>
+            <td>{displayDate(overdue.dueDate)}</td>
+            <td>{money.format(overdue.effectiveAmount)}</td>
+            <td>{money.format(overdue.submitted)}</td>
+            <td>{money.format(overdue.remaining)}</td>
+            <td><span className="status overdue">Overdue</span></td>
+            <td><div className="row-actions">
+              <form action={submitBillAction}>
+                <input type="hidden" name="id" value={overdue.billId}/>
+                <input type="hidden" name="occurrenceId" value={overdue.id}/>
+                <input type="hidden" name="dueDate" value={overdue.dueDate}/>
+                <input type="hidden" name="month" value={overdue.month}/>
+                <input type="hidden" name="rowKey" value={historicalRowKey}/>
+                <button type="submit">Submit</button>
+              </form>
+              <Link className="button partial" href={`/?month=${overdue.month}&partial=${encodeURIComponent(historicalRowKey)}#${anchorId(historicalRowKey)}`}>Partial</Link>
+            </div></td>
+          </tr>;
+        })}
+      </tbody></table></div>
+    </section>}
+
     {groupLedgerBills(filteredRows).map(({ type, bills }) => <section className="panel" key={type}><header><strong>{type} Bills</strong><span>{bills.length} {bills.length === 1 ? 'occurrence' : 'occurrences'}</span></header><div className="table-wrap"><table><thead><tr><th>Bill</th><th>Type</th><th>Category</th><th>Account</th><th>Budget</th><th>Actual</th><th>Due Date</th><th>Status</th><th>Actions</th></tr></thead><tbody>{bills.flatMap((bill) => {
       const editing = params?.edit === bill.rowKey || params?.edit === bill.occurrenceId;
       const partial = params?.partial === bill.rowKey || params?.partial === bill.occurrenceId;
@@ -111,7 +167,7 @@ export default async function BillsPage({ searchParams }) {
         <td><input form={editFormId} aria-label="Due Date" name="nextDue" type="date" defaultValue={bill.nextDue} required/></td>
         <td><span className={`status ${bill.status}`}>{bill.status}</span></td>
         <td><div className="row-actions"><button form={editFormId} type="submit">Save</button><Link className="button ghost" href={`/?month=${selectedMonth}${filterSuffix}#${rowAnchor}`}>Cancel</Link></div></td>
-      </tr> : <tr key={bill.rowKey} id={rowAnchor}><td><b>{bill.payee}</b>{bill.frequency === 'bi-weekly' && <small>Bi-weekly installment</small>}{bill.submitted > 0 && <small>Paid {money.format(bill.submitted)} · Remaining {money.format(bill.remaining ?? 0)}{bill.credit > 0 ? ` · Credit ${money.format(bill.credit)}` : ''}</small>}</td><td>{bill.type}</td><td>{displayCategory(bill.category)}</td><td>{bill.account}</td><td>{bill.budget === null ? 'Enter amount' : money.format(bill.budget)}</td><td>{bill.actualAmount === null ? '—' : <>{money.format(bill.actualAmount)}<small>Source: {actualSource(bill)}</small></>}</td><td>{displayDate(bill.nextDue)}</td><td><span className={`status ${bill.status}`}>{bill.status}</span></td><td><div className="row-actions"><form action={submitBillAction}><input type="hidden" name="id" value={bill.id}/><input type="hidden" name="occurrenceId" value={bill.occurrenceId ?? ''}/><input type="hidden" name="dueDate" value={bill.nextDue}/><input type="hidden" name="month" value={selectedMonth}/><input type="hidden" name="rowKey" value={bill.rowKey}/><input type="hidden" name="returnQuery" value={returnQuery}/><button type="submit" disabled={bill.status === 'submitted' || bill.effectiveAmount === null || !bill.occurrenceId}>Submit</button></form><Link className={`button partial ${bill.effectiveAmount === null || !bill.occurrenceId ? 'disabled' : ''}`} aria-disabled={bill.effectiveAmount === null || !bill.occurrenceId} href={bill.effectiveAmount === null || !bill.occurrenceId ? `/?month=${selectedMonth}${filterSuffix}#${rowAnchor}` : `/?month=${selectedMonth}${filterSuffix}&partial=${encodeURIComponent(bill.rowKey)}#${rowAnchor}`}>Partial</Link><Link className="button ghost" href={`/?month=${selectedMonth}${filterSuffix}&edit=${encodeURIComponent(bill.rowKey)}#${rowAnchor}`}>Edit</Link><form action={archiveBillAction}><input type="hidden" name="id" value={bill.id}/><input type="hidden" name="month" value={selectedMonth}/><input type="hidden" name="rowKey" value={bill.rowKey}/><input type="hidden" name="returnQuery" value={returnQuery}/><ConfirmButton className="ghost danger" message={`Archive ${bill.payee}?`}>Archive</ConfirmButton></form></div></td></tr>;
+      </tr> : <tr key={bill.rowKey} id={rowAnchor}><td><b>{bill.payee}</b>{bill.overdueCount > 0 && <small>{bill.overdueCount} prior overdue {bill.overdueCount === 1 ? 'occurrence' : 'occurrences'} · {money.format(bill.overdueOutstanding)}</small>}{bill.frequency === 'bi-weekly' && <small>Bi-weekly installment</small>}{bill.submitted > 0 && <small>Paid {money.format(bill.submitted)} · Remaining {money.format(bill.remaining ?? 0)}{bill.credit > 0 ? ` · Credit ${money.format(bill.credit)}` : ''}</small>}</td><td>{bill.type}</td><td>{displayCategory(bill.category)}</td><td>{bill.account}</td><td>{bill.budget === null ? 'Enter amount' : money.format(bill.budget)}</td><td>{bill.actualAmount === null ? '—' : <>{money.format(bill.actualAmount)}<small>Source: {actualSource(bill)}</small></>}</td><td>{displayDate(bill.nextDue)}</td><td><span className={`status ${bill.status}`}>{bill.status}</span></td><td><div className="row-actions"><form action={submitBillAction}><input type="hidden" name="id" value={bill.id}/><input type="hidden" name="occurrenceId" value={bill.occurrenceId ?? ''}/><input type="hidden" name="dueDate" value={bill.nextDue}/><input type="hidden" name="month" value={selectedMonth}/><input type="hidden" name="rowKey" value={bill.rowKey}/><input type="hidden" name="returnQuery" value={returnQuery}/><button type="submit" disabled={bill.status === 'submitted' || bill.effectiveAmount === null || !bill.occurrenceId}>Submit</button></form><Link className={`button partial ${bill.effectiveAmount === null || !bill.occurrenceId ? 'disabled' : ''}`} aria-disabled={bill.effectiveAmount === null || !bill.occurrenceId} href={bill.effectiveAmount === null || !bill.occurrenceId ? `/?month=${selectedMonth}${filterSuffix}#${rowAnchor}` : `/?month=${selectedMonth}${filterSuffix}&partial=${encodeURIComponent(bill.rowKey)}#${rowAnchor}`}>Partial</Link><Link className="button ghost" href={`/?month=${selectedMonth}${filterSuffix}&edit=${encodeURIComponent(bill.rowKey)}#${rowAnchor}`}>Edit</Link><form action={archiveBillAction}><input type="hidden" name="id" value={bill.id}/><input type="hidden" name="month" value={selectedMonth}/><input type="hidden" name="rowKey" value={bill.rowKey}/><input type="hidden" name="returnQuery" value={returnQuery}/><ConfirmButton className="ghost danger" message={`Archive ${bill.payee}?`}>Archive</ConfirmButton></form></div></td></tr>;
       const detail = partial && selected ? <tr key={`${bill.rowKey}-partial`} className="inline-detail"><td colSpan="9"><div className="inline-payment"><div className="inline-payment-head"><strong>Payments for {selected.payee} · {displayDate(selected.nextDue)}</strong><Link href={`/?month=${selectedMonth}${filterSuffix}#${rowAnchor}`}>Close</Link></div><form action={addPaymentAction} className="inline-form"><input type="hidden" name="id" value={selected.id}/><input type="hidden" name="occurrenceId" value={selected.occurrenceId ?? ''}/><input type="hidden" name="dueDate" value={selected.nextDue}/><input type="hidden" name="month" value={selectedMonth}/><input type="hidden" name="rowKey" value={selected.rowKey}/><input type="hidden" name="returnQuery" value={returnQuery}/><label>Payment amount<input name="amount" type="number" min="0.01" step="0.01" required/></label><label>Payment date<input name="paymentDate" type="date" defaultValue={today()} required/></label><label>Funding account<input name="fundingAccount" defaultValue={selected.account} required/></label><label>Notes<input name="notes"/></label><button type="submit">Add Payment</button></form>{selected.transactions.map((payment) => <form action={updatePaymentAction} className="payment-row" key={payment.id}><input type="hidden" name="id" value={selected.id}/><input type="hidden" name="occurrenceId" value={selected.occurrenceId ?? ''}/><input type="hidden" name="month" value={selectedMonth}/><input type="hidden" name="rowKey" value={selected.rowKey}/><input type="hidden" name="returnQuery" value={returnQuery}/><input type="hidden" name="paymentId" value={payment.id}/><input aria-label="Payment amount" name="amount" type="number" step="0.01" defaultValue={payment.amount}/><input aria-label="Payment date" name="paymentDate" type="date" defaultValue={payment.paymentDate}/><input aria-label="Funding account" name="fundingAccount" defaultValue={payment.fundingAccount ?? selected.account} required/><input aria-label="Payment notes" name="notes" defaultValue={payment.notes ?? ''}/><button type="submit">Update</button><button formAction={removePaymentAction} className="ghost danger">Remove</button></form>)}</div></td></tr> : null;
       return detail ? [row, detail] : [row];
     })}</tbody></table></div></section>)}
