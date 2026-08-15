@@ -6,6 +6,7 @@ import {
   addPaymentAction,
   archiveBillAction,
   bulkSubmitAction,
+  bulkSubmitActualsAction,
   editBillAction,
   removePaymentAction,
   submitBillAction,
@@ -70,6 +71,9 @@ export default async function BillsPage({ searchParams }) {
   const returnQuery = billFilterQuery(filters);
   const filterSuffix = returnQuery ? `&${returnQuery}` : '';
   const filteredRows = applyFilters(rows, filters);
+  const bulkActualEligibleCount = returnQuery
+    ? filteredRows.filter((bill) => bill.occurrenceId && bill.actualAmount === null && bill.budget !== null).length
+    : 0;
   const selectedKey = params?.partial || params?.edit;
   const selected = rows.find((bill) => bill.rowKey === selectedKey || bill.occurrenceId === selectedKey);
 
@@ -94,6 +98,18 @@ export default async function BillsPage({ searchParams }) {
       <label>Status<input name="f_status" defaultValue={filters.status} placeholder="Use blank for empty"/></label>
       <div className="filter-actions"><button type="submit">Apply Filters</button><Link className="button ghost" href={`/?month=${selectedMonth}`}>Clear</Link></div>
     </form>
+
+    {returnQuery && <form action={bulkSubmitActualsAction} className="bulk-actuals-form">
+      <input type="hidden" name="month" value={selectedMonth}/>
+      {Object.entries(filters).map(([key, filterValue]) => <input key={key} type="hidden" name={`f_${key}`} value={filterValue}/>)}
+      <ConfirmButton
+        disabled={bulkActualEligibleCount === 0}
+        message={`Set Actual equal to Budget and submit ${bulkActualEligibleCount} filtered bill${bulkActualEligibleCount === 1 ? '' : 's'}?`}
+      >
+        Bulk Submit Actuals ({bulkActualEligibleCount})
+      </ConfirmButton>
+      <span>Applies only to filtered bills with a blank Actual amount; existing Actual amounts are preserved.</span>
+    </form>}
 
     {groupLedgerBills(filteredRows).map(({ type, bills }) => <section className="panel" key={type}><header><strong>{type} Bills</strong><span>{bills.length} {bills.length === 1 ? 'occurrence' : 'occurrences'}</span></header><div className="table-wrap"><table><thead><tr><th>Bill</th><th>Type</th><th>Category</th><th>Account</th><th>Budget</th><th>Actual</th><th>Due Date</th><th>Status</th><th>Actions</th></tr></thead><tbody>{bills.flatMap((bill) => {
       const editing = params?.edit === bill.rowKey || params?.edit === bill.occurrenceId;
