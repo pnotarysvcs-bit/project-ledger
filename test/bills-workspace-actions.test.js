@@ -19,6 +19,11 @@ test('Bills workspace binds all mutations to the canonical action boundary', () 
   assert.match(pageSource, /formAction=\{removePaymentAction\}/);
 });
 
+test('Add Bill returns to the month represented by the entered Due Date', () => {
+  assert.match(actionSource, /const created = await createBill\(/);
+  assert.match(actionSource, /month: created\.month/);
+});
+
 test('Bills page no longer owns direct persistence mutation logic', () => {
   assert.doesNotMatch(pageSource, /supabaseRequest/);
   assert.doesNotMatch(pageSource, /ledger_bills\?select=id/);
