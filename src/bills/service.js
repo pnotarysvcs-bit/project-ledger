@@ -46,7 +46,7 @@ function validateBillType(account, requestedType) {
 }
 
 export async function createBill(input, repository = billsRepository) {
-  const month = String(input.month ?? '').trim();
+  const selectedMonth = String(input.month ?? '').trim();
   const name = String(input.name ?? '').trim();
   const category = String(input.category ?? '').trim();
   const account = String(input.account ?? '').trim().toUpperCase();
@@ -56,9 +56,14 @@ export async function createBill(input, repository = billsRepository) {
   const budget = numberOrNull(input.budget, 'Budget Amount');
   const actualAmount = numberOrNull(input.actualAmount, 'Actual Bill Amount');
 
-  validateBillIdentity({ month, name, account, category, dueDate, requireCategory: true });
+  validateBillIdentity({ month: selectedMonth, name, account, category, dueDate, requireCategory: true });
   if (budget === null && actualAmount === null) throw new Error('Enter either a Budget Amount or an Actual Bill Amount.');
   const billType = validateBillType(account, requestedType);
+  // The month displayed when Add Bill is opened is only UI context. A new
+  // bill's first occurrence must follow its entered Due Date so, for example,
+  // a September 5 bill entered while August is displayed does not become an
+  // August 5 bill.
+  const startMonth = dueDate.slice(0, 7);
 
   const master = await repository.createMasterBill({
     bill_name: name,
@@ -69,7 +74,7 @@ export async function createBill(input, repository = billsRepository) {
     frequency,
     due_day: Number(dueDate.slice(8, 10)),
     recurrence_anchor: frequency === 'bi-weekly' ? dueDate : null,
-    start_month: `${month}-01`,
+    start_month: `${startMonth}-01`,
     is_active: true,
     notes: String(input.notes ?? '').trim() || null,
   });
@@ -77,7 +82,7 @@ export async function createBill(input, repository = billsRepository) {
 
   const occurrence = await repository.createOccurrence({
     bill_id: master.id,
-    month: `${month}-01`,
+    month: `${startMonth}-01`,
     status: null,
     occurrence_budget_amount: budget,
     actual_amount: actualAmount,
@@ -87,7 +92,7 @@ export async function createBill(input, repository = billsRepository) {
   });
   if (!occurrence?.id) throw new Error('Bill occurrence creation was not confirmed by the database.');
 
-  return { billId: master.id, occurrenceId: occurrence.id };
+  return { billId: master.id, occurrenceId: occurrence.id, month: startMonth };
 }
 
 export async function updateBill(input, repository = billsRepository) {
