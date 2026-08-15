@@ -14,6 +14,7 @@ test('Bills workspace binds all mutations to the canonical action boundary', () 
   assert.match(pageSource, /action=\{addPaymentAction\}/);
   assert.match(pageSource, /action=\{submitBillAction\}/);
   assert.match(pageSource, /action=\{bulkSubmitAction\}/);
+  assert.match(pageSource, /action=\{bulkSubmitActualsAction\}/);
   assert.match(pageSource, /action=\{archiveBillAction\}/);
   assert.match(pageSource, /formAction=\{removePaymentAction\}/);
 });
@@ -48,4 +49,27 @@ test('Type, Account, and Status filters use exact matching', () => {
   assert.match(pageSource, /exact\(bill\.type, filters\.type\)/);
   assert.match(pageSource, /exact\(bill\.account, filters\.account\)/);
   assert.match(pageSource, /exact\(bill\.status, filters\.status\)/);
+});
+
+
+test('Bulk Submit Actuals is filter-scoped and preserves existing actual amounts', () => {
+  assert.match(pageSource, /returnQuery && <form action=\{bulkSubmitActualsAction\}/);
+  assert.match(pageSource, /Bulk Submit Actuals \(\{bulkActualEligibleCount\}\)/);
+  assert.match(pageSource, /bill\.actualAmount === null && bill\.budget !== null/);
+  assert.match(actionSource, /Apply at least one bill filter before using Bulk Submit Actuals/);
+  assert.match(actionSource, /applyBillFilters\(rows, filters/);
+  assert.match(serviceSource, /bill\.actualAmount === null/);
+  assert.match(serviceSource, /actual_amount: Number\(bill\.budget\)/);
+  assert.match(serviceSource, /Filtered bulk actual submitted/);
+});
+
+
+test('Bills workspace renders prior overdue occurrences separately from current bill status', () => {
+  assert.match(pageSource, /<strong>Prior Overdue Bills<\/strong>/);
+  assert.match(pageSource, /priorOverdueRows\.map/);
+  assert.match(pageSource, /overdue\.month/);
+  assert.match(pageSource, /overdue\.dueDate/);
+  assert.match(pageSource, /overdue\.remaining/);
+  assert.match(pageSource, /bill\.overdueCount > 0/);
+  assert.doesNotMatch(pageSource, /bill\.payee.*· Overdue/s);
 });
