@@ -137,12 +137,23 @@ test('filtered bulk actuals copies budget only into blank actuals and submits re
     ],
   }, repository);
 
-  assert.deepEqual(result, { count: 2, paymentCount: 1 });
+  assert.deepEqual(result, { count: 3, paymentCount: 2 });
   const occurrenceUpdates = repository.calls.filter(([name]) => name === 'updateOccurrence');
   assert.deepEqual(occurrenceUpdates, [
     ['updateOccurrence', { billId: 'a', occurrenceId: 'occ-a', month: '2026-05' }, { actual_amount: 100, migration_incomplete: false }],
     ['updateOccurrence', { billId: 'd', occurrenceId: 'occ-d', month: '2026-05' }, { actual_amount: 25, migration_incomplete: false }],
   ]);
+  const occurrenceCreate = repository.calls.find(([name, payload]) => name === 'createOccurrence' && payload.bill_id === 'c')[1];
+  assert.deepEqual(occurrenceCreate, {
+    bill_id: 'c',
+    month: '2026-05-01',
+    status: null,
+    occurrence_budget_amount: 50,
+    actual_amount: 50,
+    due_date: '2026-05-15',
+    installment_key: '2026-05-15',
+    migration_incomplete: false,
+  });
   const payloads = repository.calls.find(([name]) => name === 'addPayments')[1];
   assert.deepEqual(payloads, [{
     bill_id: 'a',
@@ -151,6 +162,14 @@ test('filtered bulk actuals copies budget only into blank actuals and submits re
     payment_month: '2026-05-01',
     payment_date: '2026-05-10',
     funding_account: 'TCU',
+    notes: 'Filtered bulk actual submitted',
+  }, {
+    bill_id: 'c',
+    occurrence_id: 'occ-new',
+    amount: 50,
+    payment_month: '2026-05-01',
+    payment_date: '2026-05-15',
+    funding_account: 'TCUB',
     notes: 'Filtered bulk actual submitted',
   }]);
 });
