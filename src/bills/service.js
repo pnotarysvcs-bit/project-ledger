@@ -209,6 +209,42 @@ export async function recordBulkPayments(input, repository = billsRepository) {
   return { count: payloads.length };
 }
 
+export async function recordBulkActuals(input, repository = billsRepository) {
+  const month = String(input.month ?? '').trim();
+  if (!validMonth(month)) throw new Error('A valid month is required.');
+
+  const eligible = (input.bills ?? []).filter((bill) => bill.occurrenceId
+    && bill.actualAmount === null
+    && bill.budget !== null
+    && Number.isFinite(Number(bill.budget)));
+
+  for (const bill of eligible) {
+    await repository.updateOccurrence({
+      billId: bill.id,
+      occurrenceId: bill.occurrenceId,
+      month,
+    }, {
+      actual_amount: Number(bill.budget),
+      migration_incomplete: false,
+    });
+  }
+
+  const payments = eligible
+    .filter((bill) => Number(bill.remaining ?? 0) > 0)
+    .map((bill) => ({
+      bill_id: bill.id,
+      occurrence_id: bill.occurrenceId,
+      amount: Number(bill.remaining),
+      payment_month: `${month}-01`,
+      payment_date: bill.nextDue,
+      funding_account: bill.account,
+      notes: 'Filtered bulk actual submitted',
+    }));
+
+  await repository.addPayments(payments);
+  return { count: eligible.length, paymentCount: payments.length };
+}
+
 export async function changePayment(input, repository = billsRepository) {
   const billId = String(input.id ?? '').trim();
   const occurrenceId = String(input.occurrenceId ?? '').trim();
