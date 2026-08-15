@@ -50,7 +50,7 @@ function redirectToBills({ month, message, rowKey = '', returnQuery = '' }) {
 
 export async function addBillAction(data) {
   const common = commonInput(data);
-  await createBill({
+  const created = await createBill({
     ...common,
     name: value(data, 'name'),
     type: value(data, 'type'),
@@ -62,7 +62,7 @@ export async function addBillAction(data) {
     nextDue: value(data, 'nextDue'),
     notes: value(data, 'notes'),
   });
-  redirectToBills({ ...common, message: 'Bill added.' });
+  redirectToBills({ ...common, month: created.month, message: 'Bill added.' });
 }
 
 export async function editBillAction(data) {
