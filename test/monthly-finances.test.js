@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getMonthlyIncome, saveMonthlyIncome } from '../src/monthly-finances.js';
+import { addMonthlyIncome, getMonthlyIncome, saveMonthlyIncome } from '../src/monthly-finances.js';
 
 const originalFetch = global.fetch;
 const originalUrl = process.env.SUPABASE_URL;
@@ -55,6 +55,29 @@ test('monthly income upserts without changing bill or payment data', { concurren
   }
 });
 
+test('monthly income additions accumulate onto the existing month total', { concurrency: false }, async () => {
+  withSupabaseEnv();
+  const requests = [];
+  global.fetch = async (url, options = {}) => {
+    requests.push({ url: String(url), options });
+    if (!options.method) {
+      return new Response(JSON.stringify([{ income: '2992.00' }]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
+    const body = JSON.parse(options.body);
+    return new Response(JSON.stringify([{ income: String(body.income) }]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+
+  try {
+    const income = await addMonthlyIncome('2026-08', 2117);
+    assert.equal(income, 5109);
+    assert.equal(requests.length, 2);
+    assert.match(requests[0].url, /month=eq\.2026-08-01/);
+    assert.equal(JSON.parse(requests[1].options.body).income, 5109);
+  } finally {
+    restoreEnv();
+  }
+});
+
 test('monthly income rejects negative values before persistence', { concurrency: false }, async () => {
   withSupabaseEnv();
   let called = false;
@@ -62,6 +85,7 @@ test('monthly income rejects negative values before persistence', { concurrency:
 
   try {
     await assert.rejects(() => saveMonthlyIncome('2026-06', -1), /zero or greater/);
+    await assert.rejects(() => addMonthlyIncome('2026-06', -1), /zero or greater/);
     assert.equal(called, false);
   } finally {
     restoreEnv();
