@@ -60,7 +60,7 @@ test('monthly income additions accumulate onto the existing month total', { conc
   const requests = [];
   global.fetch = async (url, options = {}) => {
     requests.push({ url: String(url), options });
-    if (!options.method) {
+    if ((options.method ?? 'GET') === 'GET') {
       return new Response(JSON.stringify([{ income: '2992.00' }]), { status: 200, headers: { 'Content-Type': 'application/json' } });
     }
     const body = JSON.parse(options.body);
