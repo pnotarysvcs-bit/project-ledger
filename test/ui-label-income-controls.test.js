@@ -15,12 +15,12 @@ test('Bills workspace uses Due Date instead of Next Due in user-facing labels', 
   assert.match(billsPage, /aria-label="Due Date" name="nextDue"/);
 });
 
-test('Monthly Income remains directly editable and preserves the current saved amount in the field', () => {
-  assert.match(incomeCard, /<button type="submit">Save<\/button>/);
-  assert.match(incomeCard, /defaultValue=\{income \?\? 0\}/);
-  assert.doesNotMatch(incomeCard, /readOnly=/);
-  assert.doesNotMatch(incomeCard, />Edit<\/a>/);
-  assert.doesNotMatch(incomeCard, />Save Income<\/button>/);
+test('Monthly Income accepts a new addition without replacing the displayed monthly total', () => {
+  assert.match(incomeCard, />Add income amount<\/span>/);
+  assert.match(incomeCard, /<button type="submit">Add Income<\/button>/);
+  assert.match(incomeCard, /defaultValue=\{0\}/);
+  assert.match(incomeCard, /await addMonthlyIncome\(month, income\)/);
+  assert.doesNotMatch(incomeCard, /defaultValue=\{income \?\? 0\}/);
 });
 
 test('Dashboard still renders Monthly Income for the selected month', () => {
