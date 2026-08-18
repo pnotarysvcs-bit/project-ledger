@@ -21,3 +21,12 @@ export async function saveMonthlyIncome(selectedMonth, income) {
 
   return Number(rows?.[0]?.income ?? amount);
 }
+
+export async function addMonthlyIncome(selectedMonth, addition) {
+  const amount = Number(addition);
+  if (!Number.isFinite(amount) || amount < 0) throw new Error('Income addition must be zero or greater.');
+
+  const current = await getMonthlyIncome(selectedMonth);
+  const total = Number(current ?? 0) + amount;
+  return saveMonthlyIncome(selectedMonth, total);
+}
