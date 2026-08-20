@@ -80,6 +80,7 @@ export function buildPayPeriodBudget(rows, period, monthlyIncome = 0) {
     bills: selected,
     totals: {
       regularPaycheck,
+      monthlyIncome: recordedMonthlyIncome,
       recordedMonthlyIncome,
       projectedMonthlyIncomeAfterPaycheck,
       planned,
