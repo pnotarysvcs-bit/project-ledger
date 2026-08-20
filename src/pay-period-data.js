@@ -60,14 +60,12 @@ export function buildPayPeriodBudget(rows, period, monthlyIncome = 0) {
     .filter((bill) => {
       if (!bill.nextDue || seen.has(bill.rowKey)) return false;
       seen.add(bill.rowKey);
-      const remaining = Number(bill.remaining ?? bill.effectiveAmount ?? 0);
-      if (remaining <= 0) return false;
-      // Every still-unpaid obligation due before the following paycheck belongs
-      // in this paycheck plan. That includes an older unpaid carry-forward and
-      // bills from the next calendar month when the coverage window crosses month-end.
-      return bill.nextDue < period.nextPaycheckDate;
+      return bill.nextDue >= period.coverageStart && bill.nextDue <= period.coverageEnd;
     })
-    .map((bill) => ({ ...bill, plannedAmount: Number(bill.remaining ?? bill.effectiveAmount ?? 0) }))
+    .map((bill) => ({
+      ...bill,
+      plannedAmount: Math.max(0, Number(bill.remaining ?? bill.effectiveAmount ?? 0)),
+    }))
     .sort((a, b) => String(a.nextDue).localeCompare(String(b.nextDue)) || String(a.payee).localeCompare(String(b.payee)));
 
   const planned = selected.reduce((sum, bill) => sum + bill.plannedAmount, 0);
