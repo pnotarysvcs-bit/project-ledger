@@ -1,50 +1,50 @@
 import { getLedgerBills } from './ledger-bills-data.js';
-import { supabaseRequest } from './supabase-server.js';
+import { getMonthlyIncome } from './monthly-finances.js';
 
+const DAY = 86400000;
+const PAY_PERIOD_DAYS = 14;
+export const PAYCHECK_ANCHOR = '2026-08-07';
 export const DEFAULT_REGULAR_PAYCHECK = 2992;
-export const PAY_PERIOD_LABELS = {
-  1: 'Pay Period 1 — 13th',
-  2: 'Pay Period 2 — 27th',
-};
 
 export function normalizePayPeriodOffset(value) {
   const parsed = Number(value);
   return Number.isSafeInteger(parsed) ? parsed : 0;
 }
 
-function monthKey(date) {
-  return date.toISOString().slice(0, 7);
+const dateKey = (value) => value.toISOString().slice(0, 10);
+const utcDate = (value) => new Date(`${value}T00:00:00Z`);
+const monthKey = (value) => String(value).slice(0, 7);
+
+function shiftDate(date, days) {
+  return new Date(date.getTime() + days * DAY);
 }
 
 function addMonths(month, amount) {
   const date = new Date(`${month}-01T00:00:00Z`);
   date.setUTCMonth(date.getUTCMonth() + amount);
-  return monthKey(date);
+  return dateKey(date).slice(0, 7);
 }
 
 export function getPayPeriod(offset = 0, now = new Date()) {
   const normalizedOffset = normalizePayPeriodOffset(offset);
-  const basePeriod = now.getUTCDate() <= 13 ? 1 : 2;
-  const baseMonthIndex = now.getUTCFullYear() * 12 + now.getUTCMonth();
-  const absoluteIndex = baseMonthIndex * 2 + (basePeriod - 1) + normalizedOffset;
-  const monthIndex = Math.floor(absoluteIndex / 2);
-  const period = ((absoluteIndex % 2) + 2) % 2 + 1;
-  const year = Math.floor(monthIndex / 12);
-  const month = monthIndex % 12;
-  const normalizedMonth = `${year}-${String(month + 1).padStart(2, '0')}`;
-  const payday = period === 1 ? 13 : 27;
+  const anchor = utcDate(PAYCHECK_ANCHOR);
+  const today = utcDate(dateKey(now));
+  const elapsed = (today - anchor) / (PAY_PERIOD_DAYS * DAY);
+  const upcomingIndex = Math.ceil(elapsed);
+  const index = upcomingIndex + normalizedOffset;
+  const paycheck = shiftDate(anchor, index * PAY_PERIOD_DAYS);
+  const nextPaycheck = shiftDate(paycheck, PAY_PERIOD_DAYS);
   return {
-    month: normalizedMonth,
-    period,
-    label: PAY_PERIOD_LABELS[period],
-    paycheckDate: `${normalizedMonth}-${payday}`,
+    paycheckDate: dateKey(paycheck),
+    nextPaycheckDate: dateKey(nextPaycheck),
+    coverageStart: dateKey(paycheck),
+    coverageEnd: dateKey(shiftDate(nextPaycheck, -1)),
     offset: normalizedOffset,
   };
 }
 
 const normalized = (value) => String(value ?? '').trim().toUpperCase();
 const isIncome = (bill) => [bill.category, bill.type].some((value) => normalized(value) === 'INCOME');
-const total = (items, field) => items.reduce((sum, item) => sum + Number(item[field] ?? 0), 0);
 
 function routeBills(items) {
   const personal = items.filter((bill) => normalized(bill.account).startsWith('TCU') && !normalized(bill.account).startsWith('TCUB'));
@@ -53,81 +53,49 @@ function routeBills(items) {
   return { personal, business, uncategorized };
 }
 
-export function buildPayPeriodBudget(rows, assignments, period, finances = {}) {
-  const expenseRows = rows.filter((bill) => !isIncome(bill));
-  const withAssignments = expenseRows.map((bill) => ({
-    ...bill,
-    payPeriod: assignments.get(bill.id) ?? null,
-  }));
-  const selected = withAssignments.filter((bill) => bill.payPeriod === period.label);
-  const other = withAssignments.filter((bill) => bill.payPeriod && bill.payPeriod !== period.label);
-  const unassigned = withAssignments.filter((bill) => !bill.payPeriod);
-  const income = Number(finances.regularIncome ?? DEFAULT_REGULAR_PAYCHECK) + Number(finances.notaryIncome ?? 0);
-  const expenses = total(selected, 'effectiveAmount');
-  const paid = selected.reduce((sum, bill) => sum + Number(bill.submitted ?? 0), 0);
-  const aheadContribution = Number(finances.aheadContribution ?? 0);
+export function buildPayPeriodBudget(rows, period, monthlyIncome = 0) {
+  const seen = new Set();
+  const selected = rows
+    .filter((bill) => !isIncome(bill))
+    .filter((bill) => {
+      if (!bill.nextDue || seen.has(bill.rowKey)) return false;
+      seen.add(bill.rowKey);
+      const remaining = Number(bill.remaining ?? bill.effectiveAmount ?? 0);
+      if (remaining <= 0) return false;
+      // The upcoming paycheck must cover every still-unpaid obligation due before
+      // the following paycheck. This naturally excludes bills already paid earlier
+      // in the month while carrying forward anything still outstanding.
+      return bill.nextDue < period.nextPaycheckDate;
+    })
+    .map((bill) => ({ ...bill, plannedAmount: Number(bill.remaining ?? bill.effectiveAmount ?? 0) }))
+    .sort((a, b) => String(a.nextDue).localeCompare(String(b.nextDue)) || String(a.payee).localeCompare(String(b.payee)));
+
+  const planned = selected.reduce((sum, bill) => sum + bill.plannedAmount, 0);
+  const regularPaycheck = DEFAULT_REGULAR_PAYCHECK;
 
   return {
     ...routeBills(selected),
-    other,
-    unassigned,
+    bills: selected,
     totals: {
-      income,
-      expenses,
-      paid,
-      aheadContribution,
-      available: income - expenses - aheadContribution,
+      regularPaycheck,
+      monthlyIncome: Number(monthlyIncome ?? 0),
+      planned,
+      available: regularPaycheck - planned,
     },
-  };
-}
-
-async function getAssignments(rows) {
-  const ids = [...new Set(rows.map((row) => row.id).filter(Boolean))];
-  if (!ids.length) return new Map();
-  const records = await supabaseRequest(`ledger_bills?select=id,pay_period&id=in.(${ids.join(',')})`);
-  return new Map(records.map((record) => [record.id, record.pay_period ?? null]));
-}
-
-async function getPeriodFinances(period) {
-  const month = `${period.month}-01`;
-  const rows = await supabaseRequest(`ledger_pay_period_finances?select=regular_income,notary_income,ahead_contribution,target_month&month=eq.${month}&period=eq.${period.period}`);
-  const row = rows?.[0];
-  return {
-    regularIncome: Number(row?.regular_income ?? DEFAULT_REGULAR_PAYCHECK),
-    notaryIncome: Number(row?.notary_income ?? 0),
-    aheadContribution: Number(row?.ahead_contribution ?? 0),
-    targetMonth: row?.target_month ? String(row.target_month).slice(0, 7) : addMonths(period.month, 1),
-  };
-}
-
-async function getAheadProgress(targetMonth, now) {
-  const targetDate = `${targetMonth}-01`;
-  const [rows, contributions] = await Promise.all([
-    getLedgerBills({ selectedMonth: targetMonth, asOf: now }),
-    supabaseRequest(`ledger_pay_period_finances?select=ahead_contribution&target_month=eq.${targetDate}`),
-  ]);
-  const target = rows.filter((bill) => !isIncome(bill)).reduce((sum, bill) => sum + Number(bill.effectiveAmount ?? 0), 0);
-  const funded = contributions.reduce((sum, row) => sum + Number(row.ahead_contribution ?? 0), 0);
-  return {
-    targetMonth,
-    target,
-    funded,
-    percent: target > 0 ? Math.min(100, Math.round((funded / target) * 100)) : 0,
   };
 }
 
 export async function getPayPeriodBudget({ offset = 0, now = new Date() } = {}) {
   const period = getPayPeriod(offset, now);
-  const [rows, finances] = await Promise.all([
-    getLedgerBills({ selectedMonth: period.month, asOf: now }),
-    getPeriodFinances(period),
+  const paycheckMonth = monthKey(period.paycheckDate);
+  const coverageMonth = monthKey(period.coverageEnd);
+  const months = [...new Set([addMonths(paycheckMonth, -1), paycheckMonth, coverageMonth])];
+  const [monthRows, monthlyIncome] = await Promise.all([
+    Promise.all(months.map((selectedMonth) => getLedgerBills({ selectedMonth, asOf: now }))),
+    getMonthlyIncome(paycheckMonth),
   ]);
-  const assignments = await getAssignments(rows);
-  const ahead = await getAheadProgress(finances.targetMonth, now);
   return {
     period,
-    finances,
-    ahead,
-    ...buildPayPeriodBudget(rows, assignments, period, finances),
+    ...buildPayPeriodBudget(monthRows.flat(), period, monthlyIncome ?? 0),
   };
 }
