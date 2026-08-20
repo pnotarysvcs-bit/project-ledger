@@ -62,9 +62,9 @@ export function buildPayPeriodBudget(rows, period, monthlyIncome = 0) {
       seen.add(bill.rowKey);
       const remaining = Number(bill.remaining ?? bill.effectiveAmount ?? 0);
       if (remaining <= 0) return false;
-      // The upcoming paycheck must cover every still-unpaid obligation due before
-      // the following paycheck. This naturally excludes bills already paid earlier
-      // in the month while carrying forward anything still outstanding.
+      // Every still-unpaid obligation due before the following paycheck belongs
+      // in this paycheck plan. That includes an older unpaid carry-forward and
+      // bills from the next calendar month when the coverage window crosses month-end.
       return bill.nextDue < period.nextPaycheckDate;
     })
     .map((bill) => ({ ...bill, plannedAmount: Number(bill.remaining ?? bill.effectiveAmount ?? 0) }))
@@ -72,13 +72,16 @@ export function buildPayPeriodBudget(rows, period, monthlyIncome = 0) {
 
   const planned = selected.reduce((sum, bill) => sum + bill.plannedAmount, 0);
   const regularPaycheck = DEFAULT_REGULAR_PAYCHECK;
+  const recordedMonthlyIncome = Number(monthlyIncome ?? 0);
+  const projectedMonthlyIncomeAfterPaycheck = recordedMonthlyIncome + regularPaycheck;
 
   return {
     ...routeBills(selected),
     bills: selected,
     totals: {
       regularPaycheck,
-      monthlyIncome: Number(monthlyIncome ?? 0),
+      recordedMonthlyIncome,
+      projectedMonthlyIncomeAfterPaycheck,
       planned,
       available: regularPaycheck - planned,
     },
