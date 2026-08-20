@@ -1,5 +1,13 @@
 .pay-period-page { max-width: 1400px; margin: 0 auto; }
 .pp-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; flex-wrap: wrap; margin-bottom: 20px; }
+.pp-title-row { display: flex; align-items: center; gap: 8px; }
+.pp-info { position: relative; display: inline-flex; align-items: center; }
+.pp-info-icon { width: 22px; height: 22px; display: inline-grid; place-items: center; padding: 0; border: 1px solid #3a4145; border-radius: 999px; background: #171818; color: #a9b2bb; font: 600 13px/1 system-ui, sans-serif; cursor: help; }
+.pp-info-icon:hover, .pp-info-icon:focus-visible { border-color: #00bd8c; color: #16e1ab; }
+.pp-info-tip { position: absolute; z-index: 20; top: calc(100% + 10px); left: 0; width: min(420px, calc(100vw - 48px)); display: none; gap: 10px; padding: 14px 15px; border: 1px solid #333637; border-radius: 10px; background: #101212; color: #dbe3ea; box-shadow: 0 12px 28px rgba(0,0,0,.28); font-size: 13px; line-height: 1.45; }
+.pp-info-tip > strong { color: #16e1ab; }
+.pp-info-tip > span { display: block; }
+.pp-info:hover .pp-info-tip, .pp-info:focus-within .pp-info-tip { display: grid; }
 .pp-nav { display: flex; gap: 8px; flex-wrap: wrap; }
 .pp-nav a { color: #dbe3ea; text-decoration: none; border: 1px solid #333637; background: #171818; border-radius: 9px; padding: 10px 13px; }
 .pp-nav a:hover { border-color: #00bd8c; color: #16e1ab; }
@@ -19,4 +27,4 @@
 .pp-table th, .pp-table td { padding: 13px 16px; }
 .pp-empty { margin: 0; padding: 24px 18px; color: #7f8a94; }
 @media (max-width: 1050px) { .pp-summary { grid-template-columns: repeat(2, 1fr); } .pp-columns { grid-template-columns: 1fr; gap: 0; } }
-@media (max-width: 560px) { .pp-summary { grid-template-columns: 1fr; } .pp-range { display: grid; } }
+@media (max-width: 560px) { .pp-summary { grid-template-columns: 1fr; } .pp-range { display: grid; } .pp-info-tip { left: -80px; width: min(360px, calc(100vw - 32px)); } }
