@@ -1,0 +1,22 @@
+.pay-period-page { max-width: 1400px; margin: 0 auto; }
+.pp-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; flex-wrap: wrap; margin-bottom: 20px; }
+.pp-nav { display: flex; gap: 8px; flex-wrap: wrap; }
+.pp-nav a { color: #dbe3ea; text-decoration: none; border: 1px solid #333637; background: #171818; border-radius: 9px; padding: 10px 13px; }
+.pp-nav a:hover { border-color: #00bd8c; color: #16e1ab; }
+.pp-range { display: flex; justify-content: space-between; gap: 12px; padding: 16px 18px; margin-bottom: 16px; border: 1px solid #292b2c; border-radius: 12px; background: #101212; }
+.pp-range span { color: #a9b2bb; }
+.pp-summary { display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); gap: 12px; margin-bottom: 20px; }
+.pp-summary article { display: grid; gap: 9px; padding: 17px; border: 1px solid #292b2c; border-radius: 12px; background: #171818; }
+.pp-summary span { color: #a9b2bb; font-size: 13px; }
+.pp-summary strong { color: #16e1ab; font-size: 22px; }
+.pp-summary .negative strong { color: #ff6872; }
+.pp-panel { overflow: hidden; margin-bottom: 18px; border: 1px solid #292b2c; border-radius: 12px; background: #171818; }
+.pp-panel > header { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 16px 18px; border-bottom: 1px solid #292b2c; }
+.pp-panel h2 { margin: 0; font-size: 17px; color: #00d6a3; }
+.pp-panel header strong { font-size: 17px; }
+.pp-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; align-items: start; }
+.pp-table { min-width: 650px; }
+.pp-table th, .pp-table td { padding: 13px 16px; }
+.pp-empty { margin: 0; padding: 24px 18px; color: #7f8a94; }
+@media (max-width: 1050px) { .pp-summary { grid-template-columns: repeat(2, 1fr); } .pp-columns { grid-template-columns: 1fr; gap: 0; } }
+@media (max-width: 560px) { .pp-summary { grid-template-columns: 1fr; } .pp-range { display: grid; } }
