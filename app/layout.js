@@ -1,6 +1,7 @@
 import './styles.css';
 import './bills-enhancements.css';
 import './bills-hotfix.css';
+import './pay-period.css';
 import Nav from './nav.js';
 import PwaRegister from './pwa-register.js';
 
