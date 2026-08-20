@@ -54,7 +54,7 @@ test('multiple payments aggregate into Submitted without replacing Actual', () =
   assert.deepEqual(result, { effectiveAmount: 100, submitted: 100, remaining: 0, credit: 0 });
 });
 
-test('overpayment creates credit and never negative remaining', () => {
-  const result = calculateOccurrenceAmounts({ budget: 100, actualAmount: null, payments: [{ amount: 125 }] });
-  assert.deepEqual(result, { effectiveAmount: 100, submitted: 125, remaining: 0, credit: 25 });
+test('paying above budget does not create an automatic credit', () => {
+  const result = calculateOccurrenceAmounts({ budget: 800, actualAmount: null, payments: [{ amount: 1000 }] });
+  assert.deepEqual(result, { effectiveAmount: 800, submitted: 1000, remaining: 0, credit: 0 });
 });

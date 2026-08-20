@@ -62,6 +62,9 @@ export function calculateOccurrenceAmounts({ budget, actualAmount, payments = []
     effectiveAmount,
     submitted,
     remaining: effectiveAmount === null ? null : Math.max(effectiveAmount - submitted, 0),
-    credit: effectiveAmount === null ? 0 : Math.max(submitted - effectiveAmount, 0),
+    // Paying more than a budget or actual bill amount is an over-budget payment,
+    // not automatically a reusable vendor/account credit. Confirmed credits need
+    // explicit persistence before they can be counted as usable money.
+    credit: 0,
   };
 }

@@ -11,7 +11,7 @@ test('status precedence is submitted then partial then overdue then blank upcomi
   assert.equal(classifyLedgerBill({ effectiveAmount: 100, submitted: 0, dueDate: '2026-08-20' }, asOf), '');
 });
 
-test('past-due overpayment is submitted with credit and never overdue', () => {
+test('past-due overpayment is submitted without creating an automatic credit', () => {
   const asOf = new Date('2026-08-08T12:00:00Z');
   assert.equal(classifyLedgerBill({ effectiveAmount: 114.98, submitted: 124.98, dueDate: '2026-04-27' }, asOf), 'submitted');
 
@@ -25,23 +25,23 @@ test('past-due overpayment is submitted with credit and never overdue', () => {
   assert.equal(row.effectiveAmount, 114.98);
   assert.equal(row.submitted, 124.98);
   assert.equal(row.remaining, 0);
-  assert.equal(row.credit, 10);
+  assert.equal(row.credit, 0);
   assert.equal(row.status, 'submitted');
 
   const summary = summarizeLedgerBills([row], asOf);
   assert.equal(summary.overdueCount, 0);
   assert.equal(summary.overdue, 0);
-  assert.equal(summary.credit, 10);
+  assert.equal(summary.credit, 0);
 });
 
-test('monthly Actual overrides Budget and preserves overpayment as credit', () => {
+test('monthly Actual overrides Budget and overpayment does not become credit', () => {
   const bills = [{ id: 'b1', bill_name: 'Utility', bill_type: 'Personal', category: 'Utilities', account: 'TCU', budget: 150, frequency: 'monthly', due_day: 15, start_month: '2026-04-01', notes: null, is_active: true, archived_at: null }];
   const occurrences = [{ id: 'o1', bill_id: 'b1', month: '2026-08-01', occurrence_budget_amount: 150, actual_amount: 100, due_date: '2026-08-15', migration_incomplete: false }];
   const payments = [{ id: 'p1', bill_id: 'b1', occurrence_id: 'o1', amount: 125, payment_date: '2026-08-10', funding_account: 'TCU', notes: null }];
   const [row] = buildLedgerRows(bills, occurrences, payments, { selectedMonth: '2026-08', asOf: new Date('2026-08-10T12:00:00Z') });
   assert.equal(row.effectiveAmount, 100);
   assert.equal(row.remaining, 0);
-  assert.equal(row.credit, 25);
+  assert.equal(row.credit, 0);
   assert.equal(row.status, 'submitted');
   assert.equal(row.transactions.length, 1);
 });
