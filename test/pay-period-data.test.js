@@ -15,7 +15,7 @@ test('pay periods follow the actual biweekly paycheck cycle anchored on August 7
   assert.equal(normalizePayPeriodOffset('not-a-number'), 0);
 });
 
-test('upcoming paycheck covers only bills with remaining balances due before the next paycheck', () => {
+test('August 21 paycheck covers remaining bills through September 3 and projects monthly income', () => {
   const period = getPayPeriod(0, new Date('2026-08-20T18:00:00Z'));
   const rows = [
     { id: 'paid', rowKey: 'paid', nextDue: '2026-08-10', category: 'Utilities', type: 'Personal', account: 'TCU', effectiveAmount: 100, remaining: 0, status: 'Submitted' },
@@ -24,11 +24,12 @@ test('upcoming paycheck covers only bills with remaining balances due before the
     { id: 'sep', rowKey: 'sep', nextDue: '2026-09-03', category: 'Housing', type: 'Personal', account: 'TCU', effectiveAmount: 400, remaining: 400, status: 'Open' },
     { id: 'later', rowKey: 'later', nextDue: '2026-09-04', category: 'Phone', type: 'Personal', account: 'TCU', effectiveAmount: 90, remaining: 90, status: 'Open' },
   ];
-  const result = buildPayPeriodBudget(rows, period, 5109);
+  const result = buildPayPeriodBudget(rows, period, 5139);
   assert.deepEqual(result.bills.map((bill) => bill.id), ['carry', 'aug', 'sep']);
   assert.equal(result.totals.planned, 725);
   assert.equal(result.totals.regularPaycheck, 2992);
-  assert.equal(result.totals.monthlyIncome, 5109);
+  assert.equal(result.totals.recordedMonthlyIncome, 5139);
+  assert.equal(result.totals.projectedMonthlyIncomeAfterPaycheck, 8131);
   assert.equal(result.totals.available, 2267);
 });
 
