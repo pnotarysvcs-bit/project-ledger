@@ -1,4 +1,5 @@
 import { getLedgerBills } from './ledger-bills-data.js';
+import { getMonthlyIncome } from './monthly-finances.js';
 
 const DAY = 86400000;
 const PERIOD_DAYS = 14;
@@ -25,7 +26,7 @@ export function getPayPeriod(offset = 0, now = new Date()) {
 const normalized = (value) => String(value ?? '').trim().toUpperCase();
 const isIncome = (bill) => [bill.category, bill.type].some((value) => normalized(value) === 'INCOME');
 
-export function buildPayPeriodBudget(rows, period) {
+export function buildPayPeriodBudget(rows, period, incomeAmount = 0) {
   const inWindow = (date) => date >= period.start && date <= period.end;
   const seen = new Set();
   const bills = rows.filter((bill) => {
@@ -37,21 +38,24 @@ export function buildPayPeriodBudget(rows, period) {
     periodTransactions: bill.transactions.filter((transaction) => inWindow(transaction.paymentDate)),
   }));
 
-  const income = bills.filter(isIncome);
+  // Income is maintained as a monthly value in the Bills workflow. Income-like
+  // bill rows are excluded from expenses, but they do not drive pay-period income.
   const expenses = bills.filter((bill) => !isIncome(bill));
   const personal = expenses.filter((bill) => normalized(bill.account).startsWith('TCU') && !normalized(bill.account).startsWith('TCUB'));
   const business = expenses.filter((bill) => normalized(bill.account).startsWith('TCUB'));
   const uncategorized = expenses.filter((bill) => !personal.includes(bill) && !business.includes(bill));
   const total = (items, field) => items.reduce((sum, item) => sum + Number(item[field] ?? 0), 0);
   const paid = (items) => items.reduce((sum, item) => sum + total(item.periodTransactions, 'amount'), 0);
+  const income = Number(incomeAmount ?? 0);
+  const expenseTotal = total(expenses, 'effectiveAmount');
 
   return {
     income, personal, business, uncategorized,
     totals: {
-      income: total(income, 'effectiveAmount'),
-      expenses: total(expenses, 'effectiveAmount'),
+      income,
+      expenses: expenseTotal,
       paid: paid(expenses),
-      available: total(income, 'effectiveAmount') - total(expenses, 'effectiveAmount'),
+      available: income - expenseTotal,
     },
   };
 }
@@ -59,6 +63,11 @@ export function buildPayPeriodBudget(rows, period) {
 export async function getPayPeriodBudget({ offset = 0, now = new Date() } = {}) {
   const period = getPayPeriod(offset, now);
   const months = [...new Set([period.start.slice(0, 7), period.end.slice(0, 7)])];
-  const rows = (await Promise.all(months.map((selectedMonth) => getLedgerBills({ selectedMonth, asOf: now })))).flat();
-  return { period, ...buildPayPeriodBudget(rows, period) };
+  const incomeMonth = period.start.slice(0, 7);
+  const [monthRows, monthlyIncome] = await Promise.all([
+    Promise.all(months.map((selectedMonth) => getLedgerBills({ selectedMonth, asOf: now }))),
+    getMonthlyIncome(incomeMonth),
+  ]);
+  const rows = monthRows.flat();
+  return { period, incomeMonth, ...buildPayPeriodBudget(rows, period, monthlyIncome ?? 0) };
 }
