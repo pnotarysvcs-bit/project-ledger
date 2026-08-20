@@ -8,14 +8,15 @@ test('pay periods use the bi-weekly anchor and relative offsets', () => {
   assert.equal(normalizePayPeriodOffset('not-a-number'), 0);
 });
 
-test('budget routes income, TCU, and TCUB and filters period payments', () => {
+test('budget uses the maintained income field, routes TCU and TCUB, and filters period payments', () => {
   const base = { nextDue: '2026-08-25', effectiveAmount: 100, transactions: [] };
   const rows = [
-    { ...base, rowKey: 'income', category: 'Income', type: 'Personal', account: 'TCU', transactions: [{ amount: 100, paymentDate: '2026-08-25' }] },
+    { ...base, rowKey: 'income-row', category: 'Income', type: 'Personal', account: 'TCU', transactions: [{ amount: 100, paymentDate: '2026-08-25' }] },
     { ...base, rowKey: 'personal', category: 'Utilities', type: 'Personal', account: 'TCU Checking', transactions: [{ amount: 20, paymentDate: '2026-08-25' }, { amount: 50, paymentDate: '2026-08-01' }] },
     { ...base, rowKey: 'business', category: 'Shipping', type: 'Business', account: 'TCUB Operating' },
   ];
-  const result = buildPayPeriodBudget(rows, { start: '2026-08-24', end: '2026-09-06' });
-  assert.deepEqual([result.income.length, result.personal.length, result.business.length], [1, 1, 1]);
-  assert.deepEqual(result.totals, { income: 100, expenses: 200, paid: 20, available: -100 });
+  const result = buildPayPeriodBudget(rows, { start: '2026-08-24', end: '2026-09-06' }, 500);
+  assert.deepEqual([result.personal.length, result.business.length], [1, 1]);
+  assert.equal(result.income, 500);
+  assert.deepEqual(result.totals, { income: 500, expenses: 200, paid: 20, available: 300 });
 });
