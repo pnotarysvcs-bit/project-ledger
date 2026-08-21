@@ -3,7 +3,7 @@ import { getMonthlyIncome } from './monthly-finances.js';
 
 const DAY = 86400000;
 const PAY_PERIOD_DAYS = 14;
-export const PAYCHECK_ANCHOR = '2026-08-07';
+export const PAYCHECK_ANCHOR = '2026-08-14';
 export const DEFAULT_REGULAR_PAYCHECK = 2992;
 
 export function normalizePayPeriodOffset(value) {
