@@ -42,19 +42,13 @@ export function getPayPeriod(offset = 0, now = new Date()) {
   };
 }
 
-export function payPeriodNumberForDate(paycheckDate) {
-  const target = utcDate(paycheckDate);
-  const month = monthKey(paycheckDate);
-  const anchor = utcDate(PAYCHECK_ANCHOR);
-  const diff = Math.round((target - anchor) / (PAY_PERIOD_DAYS * DAY));
-  let cursor = shiftDate(anchor, diff * PAY_PERIOD_DAYS);
-  while (monthKey(dateKey(shiftDate(cursor, -PAY_PERIOD_DAYS))) === month) cursor = shiftDate(cursor, -PAY_PERIOD_DAYS);
-  let period = 1;
-  while (dateKey(cursor) < paycheckDate) {
-    cursor = shiftDate(cursor, PAY_PERIOD_DAYS);
-    period += 1;
-  }
-  return period;
+export function getFundingKeyForPeriod(period) {
+  const fundingMonth = monthKey(period.coverageEnd);
+  const coverageEndDay = Number(String(period.coverageEnd).slice(8, 10));
+  return {
+    fundingMonth,
+    periodNumber: coverageEndDay <= 14 ? 1 : 2,
+  };
 }
 
 const normalized = (value) => String(value ?? '').trim().toUpperCase();
@@ -125,14 +119,14 @@ export async function getPayPeriodBudget({ offset = 0, now = new Date() } = {}) 
   const period = getPayPeriod(offset, now);
   const paycheckMonth = monthKey(period.paycheckDate);
   const coverageMonth = monthKey(period.coverageEnd);
-  const periodNumber = payPeriodNumberForDate(period.paycheckDate);
+  const { fundingMonth, periodNumber } = getFundingKeyForPeriod(period);
   const months = [...new Set([addMonths(paycheckMonth, -1), paycheckMonth, coverageMonth])];
   const [monthRows, funding] = await Promise.all([
     Promise.all(months.map((selectedMonth) => getLedgerBills({ selectedMonth, asOf: now }))),
-    getPayPeriodIncome(paycheckMonth, periodNumber),
+    getPayPeriodIncome(fundingMonth, periodNumber),
   ]);
   return {
-    period: { ...period, periodNumber },
+    period: { ...period, periodNumber, fundingMonth },
     ...buildPayPeriodBudget(monthRows.flat(), period, funding),
   };
 }
