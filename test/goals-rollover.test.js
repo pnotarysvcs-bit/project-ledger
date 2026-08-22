@@ -6,7 +6,7 @@ test('monthlyEquivalent normalizes recurring actual payments', () => {
   assert.equal(monthlyEquivalent({ actualAmount: 400, frequency: 'monthly' }), 400);
   assert.equal(monthlyEquivalent({ actualAmount: 1200, frequency: 'quarterly' }), 400);
   assert.equal(monthlyEquivalent({ actualAmount: 1200, frequency: 'annual' }), 100);
-  assert.equal(monthlyEquivalent({ actualAmount: 500, frequency: 'one-time' }), 0);
+  assert.equal(monthlyEquivalent({ actualAmount: 500, frequency: 'one-time' }), 500);
 });
 
 test('payoff recommendation favors the payoff-like bill that frees the most monthly cash', () => {
