@@ -109,8 +109,7 @@
 .dashboard-redesign .timeline-step { padding: 10px 0; }
 .dashboard-redesign .rolling-action-card { margin-top: 0; }
 .dashboard-redesign .rolling-action-grid { grid-template-columns: minmax(250px, 1.5fr) minmax(150px, .7fr) auto minmax(180px, .8fr); }
-.dashboard-redesign .glance-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
-.dashboard-redesign .glance-grid::after { content: "Total Assets"; display: grid; align-content: center; padding: 13px; border: 1px solid #735a12; border-radius: 10px; color: #f4c329; background: rgba(85, 62, 8, .17); font-weight: 700; }
+.dashboard-redesign .glance-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .dashboard-redesign .goal-footer-note { display: none; }
 
 @media (max-width: 1100px) {
