@@ -27,7 +27,7 @@ export function monthlyEquivalent(bill) {
   if (bill?.frequency === 'bi-weekly') return actual * 26 / 12;
   if (bill?.frequency === 'quarterly') return actual / 3;
   if (bill?.frequency === 'annual') return actual / 12;
-  if (bill?.frequency === 'one-time') return 0;
+  if (bill?.frequency === 'one-time') return actual;
   return actual;
 }
 
