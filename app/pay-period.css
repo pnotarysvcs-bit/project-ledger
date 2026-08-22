@@ -42,3 +42,47 @@
 @media (max-width: 1050px) { .pp-summary { grid-template-columns: repeat(2, 1fr); } .pp-columns { grid-template-columns: 1fr; gap: 0; } .pp-ahead { grid-template-columns: 1fr; } }
 @media (max-width: 720px) { .pp-cash-form { grid-template-columns: 1fr; } }
 @media (max-width: 560px) { .pp-summary { grid-template-columns: 1fr; } .pp-range { display: grid; } .pp-info-tip { left: -80px; width: min(360px, calc(100vw - 32px)); } }
+
+
+/* Dashboard-aligned Pay Period redesign */
+.shell:has(.pay-period-redesign) { display: block; }
+.shell:has(.pay-period-redesign) > .sidebar { display: none; }
+.shell:has(.pay-period-redesign) > main { width: 100%; max-width: none; padding: 0; }
+.pay-period-redesign { min-height: 100vh; background: radial-gradient(circle at 50% 15%, #0b1820 0, #071016 38%, #05090d 100%); color: #e7edf2; }
+.pay-period-content { padding: 18px 18px 30px; }
+.pay-period-redesign .pay-period-page { width: 100%; max-width: none; margin: 0; }
+.pay-period-redesign .pp-heading { align-items: center; margin-bottom: 14px; }
+.pay-period-redesign .pp-heading .lede { max-width: 760px; margin-bottom: 0; color: #9cabb6; }
+.pay-period-redesign .pp-range { margin-bottom: 12px; padding: 13px 16px; border-color: #223541; background: rgba(10, 21, 28, .94); }
+.pay-period-redesign .pp-summary { gap: 10px; margin-bottom: 10px; }
+.pay-period-redesign .pp-summary article { padding: 14px 16px; border-color: #223541; background: linear-gradient(180deg, rgba(12, 25, 33, .96), rgba(8, 17, 23, .96)); box-shadow: 0 8px 25px rgba(0, 0, 0, .12); }
+.pay-period-redesign .pp-summary strong { font-size: 21px; }
+.pay-period-redesign .pp-note { margin: 0 0 12px; color: #9cabb6; font-size: 13px; }
+.pay-period-redesign .pp-columns { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.pay-period-redesign .pp-panel { margin-bottom: 12px; border-color: #223541; background: linear-gradient(180deg, rgba(12, 25, 33, .96), rgba(8, 17, 23, .96)); box-shadow: 0 8px 25px rgba(0, 0, 0, .12); }
+.pay-period-redesign .pp-panel > header { padding: 13px 15px; border-color: #223541; }
+.pay-period-redesign .pp-table { width: 100%; min-width: 0; table-layout: fixed; }
+.pay-period-redesign .pp-table th,
+.pay-period-redesign .pp-table td { padding: 10px 12px; overflow-wrap: anywhere; }
+.pay-period-redesign .pp-table th:nth-child(1) { width: 28%; }
+.pay-period-redesign .pp-table th:nth-child(2) { width: 22%; }
+.pay-period-redesign .pp-table th:nth-child(3) { width: 14%; }
+.pay-period-redesign .pp-table th:nth-child(4) { width: 19%; }
+.pay-period-redesign .pp-table th:nth-child(5) { width: 17%; }
+.pay-period-redesign .pp-table td:nth-child(4),
+.pay-period-redesign .pp-table th:nth-child(4) { text-align: right; }
+.pay-period-redesign .pp-table td:nth-child(5) { color: #a9b7c3; text-transform: capitalize; }
+.pay-period-redesign .pp-nav a { background: rgba(12, 25, 33, .96); border-color: #2b3d48; }
+.pay-period-redesign .pp-nav a[aria-current="page"] { color: #2dd978; border-color: #2acb70; }
+
+@media (max-width: 1100px) {
+  .pay-period-redesign .pp-columns { grid-template-columns: 1fr; }
+}
+@media (max-width: 760px) {
+  .pay-period-content { padding: 14px 12px 24px; }
+  .pay-period-redesign .pp-heading { align-items: stretch; }
+  .pay-period-redesign .pp-nav { width: 100%; display: grid; grid-template-columns: repeat(3, 1fr); }
+  .pay-period-redesign .pp-nav a { text-align: center; padding: 9px 8px; }
+  .pay-period-redesign .pp-table { min-width: 620px; table-layout: auto; }
+  .pay-period-redesign .pp-panel .table-wrap { overflow-x: auto; }
+}
