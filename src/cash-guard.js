@@ -6,13 +6,37 @@ const number = (value) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+export async function getLatestCashSnapshot() {
+  const rows = await supabaseRequest('ledger_cash_guard?select=available_cash,cash_as_of,month&order=month.desc&limit=1');
+  const row = rows?.[0] ?? {};
+  return {
+    availableCash: number(row.available_cash),
+    cashAsOf: row.cash_as_of ?? null,
+    month: row.month ?? null,
+  };
+}
+
 export async function getCashGuardInputs(selectedMonth) {
   const normalized = normalizeLedgerMonth(selectedMonth);
   const month = `${normalized}-01`;
-  const [guardRows, payPeriods] = await Promise.all([
+  const [guardRows, payPeriods, rollovers, sourceBills] = await Promise.all([
     supabaseRequest(`ledger_cash_guard?select=available_cash,variable_essentials_reserve,planned_one_offs_reserve,cash_floor,discretionary_lock_until,cash_as_of,notes&month=eq.${month}`),
     supabaseRequest(`ledger_pay_period_finances?select=period,regular_income,notary_income,ahead_contribution,target_month&month=eq.${month}&order=period.asc`),
+    supabaseRequest(`ledger_goal_rollovers?select=source_bill_id,source_name,target_name,monthly_amount,status,closed_month&closed_month=lte.${month}&order=closed_month.asc`),
+    supabaseRequest('ledger_bills?select=id,frequency'),
   ]);
+
+  const sourceFrequency = new Map((sourceBills ?? []).map((bill) => [bill.id, String(bill.frequency ?? '').trim().toLowerCase()]));
+  const freedCashItems = (rollovers ?? [])
+    .filter((row) => sourceFrequency.get(row.source_bill_id) !== 'one-time')
+    .map((row) => ({
+      sourceBillId: row.source_bill_id,
+      sourceName: row.source_name,
+      targetName: row.target_name ?? null,
+      monthlyAmount: number(row.monthly_amount),
+      status: row.status,
+      closedMonth: row.closed_month,
+    }));
 
   const guard = guardRows?.[0] ?? {};
   return {
@@ -23,6 +47,7 @@ export async function getCashGuardInputs(selectedMonth) {
     discretionaryLockUntil: guard.discretionary_lock_until ?? null,
     cashAsOf: guard.cash_as_of ?? null,
     notes: guard.notes ?? null,
+    freedCashItems,
     payPeriods: (payPeriods ?? []).map((row) => ({
       period: Number(row.period),
       regularIncome: number(row.regular_income),
@@ -47,6 +72,7 @@ export function calculateCashGuard(rows = [], inputs = {}, asOf = new Date()) {
     (sum, period) => sum + number(period.regularIncome) + number(period.notaryIncome),
     0,
   );
+  const freedUpCashFlow = (inputs.freedCashItems ?? []).reduce((sum, item) => sum + number(item.monthlyAmount), 0);
   const reserves = number(inputs.variableEssentialsReserve)
     + number(inputs.plannedOneOffsReserve)
     + number(inputs.cashFloor);
@@ -57,6 +83,8 @@ export function calculateCashGuard(rows = [], inputs = {}, asOf = new Date()) {
   return {
     availableCash: number(inputs.availableCash),
     fundingReceived,
+    freedUpCashFlow,
+    freedCashItems: inputs.freedCashItems ?? [],
     billsReserved,
     currentBillsRemaining,
     overdueBillsRemaining,

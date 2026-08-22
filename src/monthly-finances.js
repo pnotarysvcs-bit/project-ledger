@@ -1,11 +1,60 @@
 import { supabaseRequest } from './supabase-server.js';
 import { normalizeLedgerMonth } from './ledger-bills-data.js';
 
+const number = (value) => {
+  const parsed = Number(value ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
 export async function getMonthlyIncome(selectedMonth) {
   const month = `${normalizeLedgerMonth(selectedMonth)}-01`;
   const rows = await supabaseRequest(`ledger_monthly_finances?select=income&month=eq.${month}`);
   if (!rows?.length) return null;
   return Number(rows[0].income);
+}
+
+export async function getIncomeBreakdown(selectedMonth) {
+  const month = `${normalizeLedgerMonth(selectedMonth)}-01`;
+  const [monthlyRows, payPeriods] = await Promise.all([
+    supabaseRequest(`ledger_monthly_finances?select=income&month=eq.${month}`),
+    supabaseRequest(`ledger_pay_period_finances?select=period,regular_income,notary_income,ahead_contribution,target_month&month=eq.${month}&order=period.asc`),
+  ]);
+
+  const legacyMonthlyIncome = number(monthlyRows?.[0]?.income);
+  const periods = (payPeriods ?? []).map((row) => ({
+    period: Number(row.period),
+    regularIncome: number(row.regular_income),
+    notaryIncome: number(row.notary_income),
+    aheadContribution: number(row.ahead_contribution),
+    targetMonth: row.target_month ?? null,
+  }));
+  const payrollIncome = periods.reduce((sum, row) => sum + row.regularIncome, 0);
+  const notarySupport = periods.reduce((sum, row) => sum + row.notaryIncome, 0);
+  const otherFunding = Math.max(0, legacyMonthlyIncome - payrollIncome);
+
+  return {
+    payrollIncome,
+    notarySupport,
+    otherFunding,
+    householdFunding: payrollIncome + notarySupport + otherFunding,
+    legacyMonthlyIncome,
+    periods,
+  };
+}
+
+export async function getPayPeriodIncome(selectedMonth, period) {
+  const month = `${normalizeLedgerMonth(selectedMonth)}-01`;
+  const rows = await supabaseRequest(
+    `ledger_pay_period_finances?select=period,regular_income,notary_income,ahead_contribution,target_month&month=eq.${month}&period=eq.${Number(period)}&limit=1`,
+  );
+  const row = rows?.[0] ?? {};
+  return {
+    period: Number(period),
+    regularIncome: number(row.regular_income),
+    notaryIncome: number(row.notary_income),
+    aheadContribution: number(row.ahead_contribution),
+    targetMonth: row.target_month ?? null,
+  };
 }
 
 export async function saveMonthlyIncome(selectedMonth, income) {
