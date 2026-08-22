@@ -2,7 +2,6 @@ import { getLedgerBills, getLedgerOverview, normalizeLedgerMonth, summarizeLedge
 import { toRingSegments } from '../../src/dashboard.js';
 import { labelForDashboardMonth, resolveDashboardMonth } from '../../src/dashboard-months.js';
 import { greetingForCentralTime } from '../../src/time-greeting.js';
-import PersistedAccountsSummary from './persisted-accounts-summary.js';
 import MonthSelector from './month-selector.js';
 import MonthlyIncomeCard from './monthly-income-card.js';
 import GoalsCard from './goals-card.js';
@@ -96,11 +95,11 @@ export default async function DashboardPage({ searchParams }) {
         <MonthlyIncomeCard selectedMonth={selectedMonth} searchParams={params} />
       </section>
 
-      <section className="widget-row">
+      <section className="widget-row activity-row">
         <article className="widget"><header><strong>Recent Activity</strong><a href={`/?month=${selectedMonth}`}>View All</a></header>{activity.length === 0 ? <p className="muted">No payments recorded yet.</p> : <ul className="activity">{activity.map((entry) => <li key={entry.id}><span className={`bubble ${entry.tone}`} aria-hidden="true" /><span className="activity-body"><b>{entry.label}</b><small>{entry.payee}</small></span><span className="activity-meta"><small>{shortDate.format(asDate(entry.date))}</small><b className="green">{money.format(entry.amount)}</b></span></li>)}</ul>}</article>
-        <PersistedAccountsSummary />
-        <GoalsCard rows={rows} />
       </section>
+
+      <GoalsCard rows={rows} />
     </>
   );
 }
