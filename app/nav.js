@@ -15,23 +15,28 @@ export default function Nav() {
   const pathname = usePathname();
 
   return (
-    <nav className="sidebar" aria-label="Sections">
-      <div className="brand">
-        <strong>Project Ledger</strong>
-        <small>Financial Management</small>
-      </div>
-      <ul>
-        {LINKS.map(({ href, label }) => {
-          const active = pathname === href;
-          return (
-            <li key={href}>
-              <Link href={href} className={active ? 'active' : undefined} aria-current={active ? 'page' : undefined}>
+    <header className="app-header">
+      <div className="app-header__inner">
+        <div className="app-brand">
+          <span className="app-brand__eyebrow">Financial Management</span>
+          <strong>Project Ledger</strong>
+        </div>
+        <nav className="app-nav" aria-label="Sections">
+          {LINKS.map(({ href, label }) => {
+            const active = pathname === href;
+            return (
+              <Link
+                key={href}
+                href={href}
+                className={active ? 'active' : undefined}
+                aria-current={active ? 'page' : undefined}
+              >
                 {label}
               </Link>
-            </li>
-          );
-        })}
-      </ul>
-    </nav>
+            );
+          })}
+        </nav>
+      </div>
+    </header>
   );
 }
