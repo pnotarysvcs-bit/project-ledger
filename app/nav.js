@@ -8,7 +8,6 @@ const LINKS = [
   { href: '/pay-period', label: 'Pay Period' },
   { href: '/', label: 'Bills' },
   { href: '/income', label: 'Income' },
-  { href: '/dashboard#goals', label: 'Goals' },
   { href: '/reconcile', label: 'Reconcile' },
   { href: '/accounts', label: 'Accounts' },
 ];
@@ -25,8 +24,7 @@ export default function Nav() {
 
       <nav aria-label="Project Ledger sections">
         {LINKS.map(({ href, label }) => {
-          const basePath = href.split('#')[0];
-          const active = label !== 'Goals' && pathname === basePath;
+          const active = pathname === href;
           return (
             <Link
               key={href}
