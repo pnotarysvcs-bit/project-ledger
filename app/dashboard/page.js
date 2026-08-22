@@ -30,23 +30,14 @@ export default async function DashboardPage({ searchParams }) {
 
   return (
     <div className="dashboard-redesign">
-      <header className="ledger-topbar">
-        <a className="ledger-brand" href="/dashboard">
-          <span className="ledger-mark" aria-hidden="true">$</span>
-          <strong>PROJECT LEDGER</strong>
-        </a>
-        <nav aria-label="Dashboard sections">
-          <a className="active" href="/dashboard">Dashboard</a>
-          <a href="/pay-period">Pay Period</a>
-          <a href="/">Bills</a>
-          <a href="/income">Income</a>
-          <a href="#goals">Goals</a>
-          <a href="/reconcile">Reports</a>
-        </nav>
-        <div className="ledger-user"><span aria-hidden="true">♧</span><span className="user-avatar">KF</span><span>Kim</span><span aria-hidden="true">⌄</span></div>
-      </header>
-
       <main className="redesign-content">
+        <header className="page-head dashboard-page-head">
+          <div>
+            <p className="eyebrow">Financial command center</p>
+            <h1>Dashboard</h1>
+            <p className="lede">Track monthly spending, bill reduction progress, rolling cash, and current financial goals in one place.</p>
+          </div>
+        </header>
         {loadError && <p className="alert" role="alert">Dashboard bills could not be loaded: {loadError}</p>}
         <GoalsCard rows={rows} activity={activity} selectedMonth={normalizeLedgerMonth(selectedMonth)} />
       </main>
