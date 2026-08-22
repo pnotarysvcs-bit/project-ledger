@@ -39,7 +39,7 @@ export default async function DashboardPage({ searchParams }) {
           <a className="active" href="/dashboard">Dashboard</a>
           <a href="/pay-period">Pay Period</a>
           <a href="/">Bills</a>
-          <a href="#income">Income</a>
+          <a href="/income">Income</a>
           <a href="#goals">Goals</a>
           <a href="/reconcile">Reports</a>
         </nav>
