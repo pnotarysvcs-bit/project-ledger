@@ -78,3 +78,52 @@
   .rolling-arrow { transform: rotate(90deg); }
   .glance-grid { grid-template-columns: 1fr; }
 }
+
+
+/* Approved dashboard redesign */
+.shell:has(.dashboard-redesign) { display: block; }
+.shell:has(.dashboard-redesign) > .sidebar { display: none; }
+.shell:has(.dashboard-redesign) > main { padding: 0; width: 100%; max-width: none; }
+.dashboard-redesign { min-height: 100vh; background: radial-gradient(circle at 50% 15%, #0b1820 0, #071016 38%, #05090d 100%); color: #e7edf2; }
+.ledger-topbar { min-height: 72px; display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 28px; padding: 0 18px; border-bottom: 1px solid #20313c; background: rgba(4, 10, 14, .94); position: sticky; top: 0; z-index: 10; }
+.ledger-brand { display: flex; align-items: center; gap: 12px; color: #f5f8fa; text-decoration: none; letter-spacing: .03em; }
+.ledger-mark { width: 34px; height: 40px; display: grid; place-items: center; color: #34d477; border: 2px solid #2acb70; border-radius: 3px; font-size: 21px; }
+.ledger-topbar nav { display: flex; align-items: stretch; gap: 30px; height: 72px; }
+.ledger-topbar nav a { display: flex; align-items: center; color: #a9b7c3; text-decoration: none; font-size: 14px; }
+.ledger-topbar nav a:hover, .ledger-topbar nav a.active { color: #2dd978; }
+.ledger-user { display: flex; align-items: center; gap: 10px; color: #d4dde4; font-size: 14px; }
+.user-avatar { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; background: #1b2932; font-size: 12px; }
+.redesign-content { padding: 14px 8px 28px; }
+.dashboard-redesign .goals-dashboard { grid-template-columns: minmax(285px, .95fr) minmax(300px, .95fr) minmax(340px, 1.08fr); gap: 14px; margin: 0; }
+.dashboard-redesign .widget { padding: 16px 18px; border-color: #223541; background: linear-gradient(180deg, rgba(12, 25, 33, .96), rgba(8, 17, 23, .96)); box-shadow: 0 8px 25px rgba(0, 0, 0, .16); }
+.dashboard-redesign .activity-card, .dashboard-redesign .runway-card, .dashboard-redesign .timeline-card { min-height: 360px; }
+.dashboard-redesign .activity-card .activity { gap: 0; }
+.dashboard-redesign .activity-card .activity li { min-height: 62px; border-bottom: 1px solid #1d303b; }
+.dashboard-redesign .activity-card .activity li:last-child { border-bottom: 0; }
+.activity-check { width: 30px; height: 30px; display: grid; place-items: center; flex: 0 0 30px; border-radius: 50%; color: #dffbea; background: #1bbd68; border: 2px solid #45d98a; box-shadow: 0 0 12px rgba(34, 197, 94, .35); font-weight: 800; }
+.dashboard-redesign .activity-meta b { color: #2dd978; margin-top: 4px; }
+.dashboard-redesign .rolling-cash-card { padding: 11px 12px; }
+.dashboard-redesign .runway-goals { gap: 10px; }
+.dashboard-redesign .runway-goal { padding-bottom: 8px; }
+.dashboard-redesign .next-goal-callout { padding: 11px; }
+.dashboard-redesign .timeline-step { padding: 10px 0; }
+.dashboard-redesign .rolling-action-card { margin-top: 0; }
+.dashboard-redesign .rolling-action-grid { grid-template-columns: minmax(250px, 1.5fr) minmax(150px, .7fr) auto minmax(180px, .8fr); }
+.dashboard-redesign .glance-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+.dashboard-redesign .glance-grid::after { content: "Total Assets"; display: grid; align-content: center; padding: 13px; border: 1px solid #735a12; border-radius: 10px; color: #f4c329; background: rgba(85, 62, 8, .17); font-weight: 700; }
+.dashboard-redesign .goal-footer-note { display: none; }
+
+@media (max-width: 1100px) {
+  .dashboard-redesign .goals-dashboard { grid-template-columns: 1fr 1fr; }
+  .dashboard-redesign .activity-card { grid-column: 1 / -1; min-height: 0; }
+  .dashboard-redesign .rolling-action-card, .dashboard-redesign .glance-card { grid-column: 1 / -1; }
+  .dashboard-redesign .glance-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 760px) {
+  .ledger-topbar { grid-template-columns: 1fr auto; padding: 10px 14px; }
+  .ledger-topbar nav { grid-column: 1 / -1; order: 3; height: auto; overflow-x: auto; gap: 18px; padding: 8px 0; }
+  .ledger-user > span:not(.user-avatar) { display: none; }
+  .dashboard-redesign .goals-dashboard { grid-template-columns: 1fr; }
+  .dashboard-redesign .activity-card, .dashboard-redesign .rolling-action-card, .dashboard-redesign .glance-card { grid-column: auto; }
+  .dashboard-redesign .glance-grid { grid-template-columns: 1fr; }
+}
