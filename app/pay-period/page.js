@@ -32,5 +32,59 @@ export default async function PayPeriodPage({ searchParams }) {
   let loadError;
   try { budget = await getPayPeriodBudget({ offset }); } catch (error) { loadError = error.message; }
 
-  return <div className="pay-period-page"><header className="pp-heading"><div><p className="eyebrow">Bi-weekly cash-flow planning</p><div className="pp-title-row"><h1>Pay Period</h1><ArchitectureInfo /></div><p className="lede">Read-only planning view. It shows the remaining bills that must be covered before the following paycheck; bill maintenance stays in Bills.</p></div><nav className="pp-nav" aria-label="Pay period"><Link href={`/pay-period?pp=${offset - 1}`}>← Previous</Link><Link href="/pay-period?pp=0">Current</Link><Link href={`/pay-period?pp=${offset + 1}`}>Next →</Link></nav></header>{loadError ? <p className="alert" role="alert">Pay period data could not be loaded: {loadError}</p> : <><div className="pp-range"><strong>Paycheck {displayDate(budget.period.paycheckDate)}</strong><span>Covers bills through {displayDate(budget.period.coverageEnd)} · next paycheck {displayDate(budget.period.nextPaycheckDate)}</span></div><section className="pp-summary" aria-label="Pay period summary"><article><span>Expected paycheck</span><strong>{money.format(budget.totals.regularPaycheck)}</strong></article><article><span>Remaining bills to cover</span><strong>{money.format(budget.totals.planned)}</strong></article><article><span>Monthly income recorded in Bills</span><strong>{money.format(budget.totals.monthlyIncome)}</strong></article><article className={budget.totals.available < 0 ? 'negative' : ''}><span>Available after remaining bills</span><strong>{money.format(budget.totals.available)}</strong></article></section><p className="pp-note">Monthly income is displayed for reference from Bills. The paycheck plan uses the $2,992 average regular paycheck so previously recorded monthly income is not counted twice.</p><div className="pp-columns"><BudgetPanel title="Personal · TCU" bills={budget.personal} empty="No remaining personal bills need to be covered before the next paycheck."/><BudgetPanel title="Business · TCUB" bills={budget.business} empty="No remaining business bills need to be covered before the next paycheck."/></div>{budget.uncategorized.length > 0 && <BudgetPanel title="Other accounts" bills={budget.uncategorized} empty=""/>}</>}</div>;
+  return (
+    <div className="pay-period-redesign">
+      <header className="ledger-topbar">
+        <Link className="ledger-brand" href="/dashboard">
+          <span className="ledger-mark" aria-hidden="true">$</span>
+          <strong>PROJECT LEDGER</strong>
+        </Link>
+        <nav aria-label="Project Ledger sections">
+          <Link href="/dashboard">Dashboard</Link>
+          <Link className="active" aria-current="page" href="/pay-period">Pay Period</Link>
+          <Link href="/">Bills</Link>
+          <Link href="/income">Income</Link>
+          <Link href="/dashboard#goals">Goals</Link>
+          <Link href="/reconcile">Reports</Link>
+        </nav>
+        <div className="ledger-user"><span aria-hidden="true">♧</span><span className="user-avatar">KF</span><span>Kim</span><span aria-hidden="true">⌄</span></div>
+      </header>
+
+      <div className="pay-period-content">
+        <div className="pay-period-page">
+          <header className="pp-heading">
+            <div>
+              <p className="eyebrow">Bi-weekly cash-flow planning</p>
+              <div className="pp-title-row"><h1>Pay Period</h1><ArchitectureInfo /></div>
+              <p className="lede">Read-only planning view of the remaining bills that must be covered before the following paycheck. Bill maintenance stays in Bills.</p>
+            </div>
+            <nav className="pp-nav" aria-label="Pay period">
+              <Link href={`/pay-period?pp=${offset - 1}`}>← Previous</Link>
+              <Link aria-current={offset === 0 ? 'page' : undefined} href="/pay-period?pp=0">Current</Link>
+              <Link href={`/pay-period?pp=${offset + 1}`}>Next →</Link>
+            </nav>
+          </header>
+
+          {loadError ? <p className="alert" role="alert">Pay period data could not be loaded: {loadError}</p> : <>
+            <div className="pp-range">
+              <strong>Paycheck {displayDate(budget.period.paycheckDate)}</strong>
+              <span>Covers bills through {displayDate(budget.period.coverageEnd)} · next paycheck {displayDate(budget.period.nextPaycheckDate)}</span>
+            </div>
+            <section className="pp-summary" aria-label="Pay period summary">
+              <article><span>Expected paycheck</span><strong>{money.format(budget.totals.regularPaycheck)}</strong></article>
+              <article><span>Remaining bills to cover</span><strong>{money.format(budget.totals.planned)}</strong></article>
+              <article><span>Monthly income recorded in Bills</span><strong>{money.format(budget.totals.monthlyIncome)}</strong></article>
+              <article className={budget.totals.available < 0 ? 'negative' : ''}><span>Available after remaining bills</span><strong>{money.format(budget.totals.available)}</strong></article>
+            </section>
+            <p className="pp-note">Monthly income is displayed for reference from Bills. The paycheck plan uses the $2,992 average regular paycheck, so recorded monthly income is not counted twice.</p>
+            <div className="pp-columns">
+              <BudgetPanel title="Personal · TCU" bills={budget.personal} empty="No remaining personal bills need to be covered before the next paycheck."/>
+              <BudgetPanel title="Business · TCUB" bills={budget.business} empty="No remaining business bills need to be covered before the next paycheck."/>
+            </div>
+            {budget.uncategorized.length > 0 && <BudgetPanel title="Other accounts" bills={budget.uncategorized} empty=""/>}
+          </>}
+        </div>
+      </div>
+    </div>
+  );
 }
