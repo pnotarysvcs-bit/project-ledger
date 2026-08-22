@@ -126,3 +126,5 @@
   .dashboard-redesign .activity-card, .dashboard-redesign .rolling-action-card, .dashboard-redesign .glance-card { grid-column: auto; }
   .dashboard-redesign .glance-grid { grid-template-columns: 1fr; }
 }
+
+.dashboard-redesign .progress-fill { display: block; min-height: 100%; }
