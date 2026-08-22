@@ -164,3 +164,40 @@ test('missing amount and migration data-quality counts remain separate', () => {
   assert.equal(summary.overdueCount, 1);
   assert.equal(summary.overdue, 25);
 });
+
+
+test('an August annual bill appears only each August and keeps its due day', async (t) => {
+  process.env.SUPABASE_URL = 'https://example.supabase.co';
+  process.env.SUPABASE_SERVICE_ROLE_KEY = 'test-key';
+
+  const annualBill = {
+    id: 'annual-august',
+    bill_name: 'Annual August Bill',
+    bill_type: 'Business',
+    category: 'Software',
+    account: 'TCUB',
+    budget: '15.25',
+    frequency: 'annual',
+    due_day: 19,
+    recurrence_anchor: null,
+    start_month: '2026-08-01',
+    notes: null,
+    is_active: true,
+  };
+
+  const originalFetch = global.fetch;
+  global.fetch = async (url) => String(url).includes('ledger_bills?')
+    ? jsonResponse([annualBill])
+    : jsonResponse([]);
+  t.after(() => { global.fetch = originalFetch; });
+
+  const august2026 = await getLedgerBills({ selectedMonth: '2026-08', asOf: new Date('2026-08-01T00:00:00Z') });
+  const september2026 = await getLedgerBills({ selectedMonth: '2026-09', asOf: new Date('2026-09-01T00:00:00Z') });
+  const august2027 = await getLedgerBills({ selectedMonth: '2027-08', asOf: new Date('2027-08-01T00:00:00Z') });
+
+  assert.equal(august2026.length, 1);
+  assert.equal(august2026[0].nextDue, '2026-08-19');
+  assert.deepEqual(september2026, []);
+  assert.equal(august2027.length, 1);
+  assert.equal(august2027[0].nextDue, '2027-08-19');
+});
