@@ -9,7 +9,7 @@ const LINKS = [
   { href: '/', label: 'Bills' },
   { href: '/income', label: 'Income' },
   { href: '/dashboard#goals', label: 'Goals' },
-  { href: '/reconcile', label: 'Reports' },
+  { href: '/reconcile', label: 'Reconcile' },
   { href: '/accounts', label: 'Accounts' },
 ];
 
