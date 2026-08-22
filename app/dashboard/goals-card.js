@@ -36,8 +36,9 @@ export default async function GoalsCard({ rows = [], activity = [], selectedMont
   const freedMonthlyCash = activeRollovers.reduce((sum, row) => sum + Number(row.monthly_amount ?? 0), 0);
   const latestAllocation = activeRollovers.find((row) => row.status === 'allocated' && row.target_name);
   const goals = buildFinancialGoals({ rows, freedMonthlyCash });
-  const expensePercent = goals.actualExpenses.current > 0
-    ? Math.min(100, Math.round((goals.actualExpenses.target / goals.actualExpenses.current) * 100))
+  const actualBillTotal = goals.actualExpenses.actualCount + goals.actualExpenses.missingActualCount;
+  const expensePercent = actualBillTotal > 0
+    ? Math.round((goals.actualExpenses.actualCount / actualBillTotal) * 100)
     : 0;
   const emergencyPercent = percent(goals.emergencyFund.current, goals.emergencyFund.target);
   const monthAheadPercent = percent(goals.oneMonthAhead.current, goals.oneMonthAhead.target);
