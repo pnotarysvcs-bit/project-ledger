@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildPayPeriodBudget, getPayPeriod, normalizePayPeriodOffset, payPeriodNumberForDate } from '../src/pay-period-data.js';
+import { buildPayPeriodBudget, getFundingKeyForPeriod, getPayPeriod, normalizePayPeriodOffset } from '../src/pay-period-data.js';
 
 test('pay periods follow the corrected biweekly paycheck cycle anchored on August 14', () => {
   assert.deepEqual(getPayPeriod(0, new Date('2026-08-20T18:00:00Z')), {
@@ -13,12 +13,24 @@ test('pay periods follow the corrected biweekly paycheck cycle anchored on Augus
   assert.equal(getPayPeriod(-1, new Date('2026-08-20T18:00:00Z')).paycheckDate, '2026-08-14');
   assert.equal(getPayPeriod(1, new Date('2026-08-20T18:00:00Z')).paycheckDate, '2026-09-11');
   assert.equal(normalizePayPeriodOffset('not-a-number'), 0);
-  assert.equal(payPeriodNumberForDate('2026-08-14'), 1);
-  assert.equal(payPeriodNumberForDate('2026-08-28'), 2);
-  assert.equal(payPeriodNumberForDate('2026-09-11'), 1);
 });
 
-test('August 28 view uses posted funding and exposes the gap until payroll posts', () => {
+test('funding rows follow the calendar-side two-week window', () => {
+  assert.deepEqual(getFundingKeyForPeriod(getPayPeriod(-1, new Date('2026-08-20T18:00:00Z'))), {
+    fundingMonth: '2026-08',
+    periodNumber: 2,
+  });
+  assert.deepEqual(getFundingKeyForPeriod(getPayPeriod(0, new Date('2026-08-20T18:00:00Z'))), {
+    fundingMonth: '2026-09',
+    periodNumber: 1,
+  });
+  assert.deepEqual(getFundingKeyForPeriod(getPayPeriod(1, new Date('2026-08-20T18:00:00Z'))), {
+    fundingMonth: '2026-09',
+    periodNumber: 2,
+  });
+});
+
+test('August 28 view uses only funding posted in its own two-week window', () => {
   const period = getPayPeriod(0, new Date('2026-08-20T18:00:00Z'));
   const rows = [
     { id: 'before', rowKey: 'before', nextDue: '2026-08-27', category: 'Utilities', type: 'Personal', account: 'TCU', effectiveAmount: 100, remaining: 0, status: 'Submitted' },
@@ -27,17 +39,17 @@ test('August 28 view uses posted funding and exposes the gap until payroll posts
     { id: 'open', rowKey: 'open', nextDue: '2026-09-10', category: 'Housing', type: 'Personal', account: 'TCU', effectiveAmount: 400, remaining: 400, status: 'Open' },
     { id: 'later', rowKey: 'later', nextDue: '2026-09-11', category: 'Phone', type: 'Personal', account: 'TCU', effectiveAmount: 90, remaining: 90, status: 'Open' },
   ];
-  const result = buildPayPeriodBudget(rows, period, { regularIncome: 0, notaryIncome: 364 });
+  const result = buildPayPeriodBudget(rows, period, { regularIncome: 0, notaryIncome: 0 });
   assert.deepEqual(result.bills.map((bill) => bill.id), ['start-paid', 'partial', 'open']);
   assert.equal(result.bills[0].planningStatus, 'Paid');
   assert.equal(result.bills[1].planningStatus, 'Partially Paid');
   assert.equal(result.bills[2].planningStatus, 'Due This Period');
   assert.equal(result.totals.planned, 525);
   assert.equal(result.totals.regularIncome, 0);
-  assert.equal(result.totals.notaryIncome, 364);
-  assert.equal(result.totals.householdFunding, 364);
-  assert.equal(result.totals.available, -161);
-  assert.equal(result.totals.fundingGap, 161);
+  assert.equal(result.totals.notaryIncome, 0);
+  assert.equal(result.totals.householdFunding, 0);
+  assert.equal(result.totals.available, -525);
+  assert.equal(result.totals.fundingGap, 525);
 });
 
 test('overdue obligations are pulled into the current funding plan', () => {
