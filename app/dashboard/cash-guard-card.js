@@ -26,6 +26,9 @@ export default async function CashGuardCard({ rows = [], selectedMonth = '' }) {
   const lockLabel = summary.locked && summary.discretionaryLockUntil
     ? `Locked through ${shortDate.format(new Date(`${summary.discretionaryLockUntil}T00:00:00`))}`
     : 'Open';
+  const freedDetail = summary.freedCashItems.length
+    ? summary.freedCashItems.map((item) => `${item.sourceName} ${money.format(item.monthlyAmount)}`).join(' · ')
+    : 'No recurring closed-bill payments identified yet';
 
   return (
     <article className="widget glance-card" aria-label="Cash Guard safe to spend">
@@ -41,10 +44,11 @@ export default async function CashGuardCard({ rows = [], selectedMonth = '' }) {
         <div className="glance-item blue"><small>Household Funding Received</small><strong>{money.format(summary.fundingReceived)}</strong><span>Payroll + approved notary support</span></div>
         <div className="glance-item orange"><small>Variable Essentials Reserve</small><strong>{money.format(summary.variableEssentialsReserve)}</strong><span>Gas, medical, groceries, household</span></div>
         <div className="glance-item purple"><small>Planned One-Offs</small><strong>{money.format(summary.plannedOneOffsReserve)}</strong><span>Gifts, tickets, repairs, annual items</span></div>
+        <div className="glance-item green"><small>Monthly Cash Freed</small><strong>{money.format(summary.freedUpCashFlow)}</strong><span>{freedDetail}</span></div>
       </div>
       <div className="timeline-note">
         <span aria-hidden="true">◉</span>
-        <span><b>{summary.fundingGap > 0 ? `${money.format(summary.fundingGap)} funding gap before reserves are fully covered` : `${money.format(summary.cashFloor)} protected cash floor`}</b><small>{summary.notes || 'Safe to Spend equals available cash less unpaid bills, reserves, planned one-offs, and the protected cash floor.'}</small></span>
+        <span><b>{summary.fundingGap > 0 ? `${money.format(summary.fundingGap)} funding gap before reserves are fully covered` : `${money.format(summary.cashFloor)} protected cash floor`}</b><small>{summary.notes || 'Safe to Spend equals available cash less unpaid bills, reserves, planned one-offs, and the protected cash floor. Monthly Cash Freed is tracked separately so eliminated recurring payments can be reassigned deliberately.'}</small></span>
       </div>
     </article>
   );
