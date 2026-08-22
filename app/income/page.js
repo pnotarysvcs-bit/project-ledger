@@ -11,7 +11,10 @@ export default async function IncomePage({ searchParams }) {
   return (
     <>
       <header className="page-head">
-        <div><h1>Income</h1><p className="lede">Add income to the selected month without changing bills, payments, budget, or credits.</p></div>
+        <div>
+          <h1>Income &amp; Household Funding</h1>
+          <p className="lede">See posted payroll, notary support, and other confirmed household funding separately so business transfers are not mistaken for salary.</p>
+        </div>
         <div className="head-actions"><MonthSelector selectedMonth={selectedMonth} /></div>
       </header>
       <section className="widget-row">

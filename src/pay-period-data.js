@@ -1,10 +1,9 @@
 import { getLedgerBills } from './ledger-bills-data.js';
-import { getMonthlyIncome } from './monthly-finances.js';
+import { getPayPeriodIncome } from './monthly-finances.js';
 
 const DAY = 86400000;
 const PAY_PERIOD_DAYS = 14;
 export const PAYCHECK_ANCHOR = '2026-08-14';
-export const DEFAULT_REGULAR_PAYCHECK = 2992;
 
 export function normalizePayPeriodOffset(value) {
   const parsed = Number(value);
@@ -43,6 +42,15 @@ export function getPayPeriod(offset = 0, now = new Date()) {
   };
 }
 
+export function getFundingKeyForPeriod(period) {
+  const fundingMonth = monthKey(period.coverageEnd);
+  const coverageEndDay = Number(String(period.coverageEnd).slice(8, 10));
+  return {
+    fundingMonth,
+    periodNumber: coverageEndDay <= 14 ? 1 : 2,
+  };
+}
+
 const normalized = (value) => String(value ?? '').trim().toUpperCase();
 const isIncome = (bill) => [bill.category, bill.type].some((value) => normalized(value) === 'INCOME');
 
@@ -53,36 +61,56 @@ function routeBills(items) {
   return { personal, business, uncategorized };
 }
 
-export function buildPayPeriodBudget(rows, period, monthlyIncome = 0) {
+function planningStatus(bill, period) {
+  if (Number(bill.overdueOutstanding ?? 0) > 0) return 'Overdue';
+  if (Number(bill.remaining ?? 0) <= 0) return 'Paid';
+  if (Number(bill.submitted ?? 0) > 0) return 'Partially Paid';
+  if (bill.nextDue >= period.coverageStart && bill.nextDue <= period.coverageEnd) return 'Due This Period';
+  return 'Upcoming';
+}
+
+export function buildPayPeriodBudget(rows, period, funding = {}) {
   const seen = new Set();
   const selected = rows
     .filter((bill) => !isIncome(bill))
     .filter((bill) => {
-      if (!bill.nextDue || seen.has(bill.rowKey)) return false;
+      if (!bill.rowKey || seen.has(bill.rowKey)) return false;
+      const dueThisPeriod = bill.nextDue && bill.nextDue >= period.coverageStart && bill.nextDue <= period.coverageEnd;
+      const overdue = Number(bill.overdueOutstanding ?? 0) > 0;
+      if (!dueThisPeriod && !overdue) return false;
       seen.add(bill.rowKey);
-      return bill.nextDue >= period.coverageStart && bill.nextDue <= period.coverageEnd;
+      return true;
     })
-    .map((bill) => ({
-      ...bill,
-      plannedAmount: Math.max(0, Number(bill.remaining ?? bill.effectiveAmount ?? 0)),
-    }))
-    .sort((a, b) => String(a.nextDue).localeCompare(String(b.nextDue)) || String(a.payee).localeCompare(String(b.payee)));
+    .map((bill) => {
+      const currentRemaining = Math.max(0, Number(bill.remaining ?? bill.effectiveAmount ?? 0));
+      const overdueRemaining = Math.max(0, Number(bill.overdueOutstanding ?? 0));
+      return {
+        ...bill,
+        plannedAmount: currentRemaining + overdueRemaining,
+        planningStatus: planningStatus(bill, period),
+      };
+    })
+    .sort((a, b) => {
+      if (a.planningStatus === 'Overdue' && b.planningStatus !== 'Overdue') return -1;
+      if (b.planningStatus === 'Overdue' && a.planningStatus !== 'Overdue') return 1;
+      return String(a.nextDue ?? '').localeCompare(String(b.nextDue ?? '')) || String(a.payee).localeCompare(String(b.payee));
+    });
 
   const planned = selected.reduce((sum, bill) => sum + bill.plannedAmount, 0);
-  const regularPaycheck = DEFAULT_REGULAR_PAYCHECK;
-  const recordedMonthlyIncome = Number(monthlyIncome ?? 0);
-  const projectedMonthlyIncomeAfterPaycheck = recordedMonthlyIncome + regularPaycheck;
+  const regularIncome = Number(funding.regularIncome ?? 0);
+  const notaryIncome = Number(funding.notaryIncome ?? 0);
+  const householdFunding = regularIncome + notaryIncome;
 
   return {
     ...routeBills(selected),
     bills: selected,
     totals: {
-      regularPaycheck,
-      monthlyIncome: recordedMonthlyIncome,
-      recordedMonthlyIncome,
-      projectedMonthlyIncomeAfterPaycheck,
+      regularIncome,
+      notaryIncome,
+      householdFunding,
       planned,
-      available: regularPaycheck - planned,
+      available: householdFunding - planned,
+      fundingGap: Math.max(0, planned - householdFunding),
     },
   };
 }
@@ -91,13 +119,14 @@ export async function getPayPeriodBudget({ offset = 0, now = new Date() } = {}) 
   const period = getPayPeriod(offset, now);
   const paycheckMonth = monthKey(period.paycheckDate);
   const coverageMonth = monthKey(period.coverageEnd);
+  const { fundingMonth, periodNumber } = getFundingKeyForPeriod(period);
   const months = [...new Set([addMonths(paycheckMonth, -1), paycheckMonth, coverageMonth])];
-  const [monthRows, monthlyIncome] = await Promise.all([
+  const [monthRows, funding] = await Promise.all([
     Promise.all(months.map((selectedMonth) => getLedgerBills({ selectedMonth, asOf: now }))),
-    getMonthlyIncome(paycheckMonth),
+    getPayPeriodIncome(fundingMonth, periodNumber),
   ]);
   return {
-    period,
-    ...buildPayPeriodBudget(monthRows.flat(), period, monthlyIncome ?? 0),
+    period: { ...period, periodNumber, fundingMonth },
+    ...buildPayPeriodBudget(monthRows.flat(), period, funding),
   };
 }
