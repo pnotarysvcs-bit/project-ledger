@@ -2,19 +2,20 @@
   min-height: 100vh;
   display: flex;
   flex-direction: column;
-  background: radial-gradient(circle at 50% 15%, #0b1820 0, #071016 38%, #05090d 100%) !important;
+  background:
+    radial-gradient(circle at 12% 0%, rgba(34, 197, 94, .10), transparent 28%),
+    radial-gradient(circle at 88% 12%, rgba(59, 130, 246, .10), transparent 30%),
+    radial-gradient(circle at 50% 62%, rgba(126, 34, 206, .07), transparent 38%),
+    #05090d;
   color: #e7edf2;
 }
-
-body { background: #05090d !important; }
 
 .shell > main {
   flex: 1;
   width: 100%;
   max-width: none;
   margin: 0;
-  padding: 14px 8px 28px;
-  background: transparent !important;
+  padding: 18px 18px 32px;
 }
 
 .platform-topbar { width: 100%; }
@@ -28,39 +29,92 @@ body { background: #05090d !important; }
   gap: 28px;
   padding: 0 18px;
   border-bottom: 1px solid #20313c;
-  background: rgba(4, 10, 14, .94) !important;
+  background: rgba(4, 10, 14, .94);
   position: sticky;
   top: 0;
   z-index: 50;
   backdrop-filter: blur(14px);
 }
 
-.ledger-brand { display: flex; align-items: center; gap: 12px; color: #f5f8fa; text-decoration: none; letter-spacing: .03em; white-space: nowrap; }
-.ledger-mark { width: 34px; height: 40px; display: grid; place-items: center; color: #34d477; border: 2px solid #2acb70; border-radius: 3px; font-size: 21px; }
-.ledger-topbar nav { display: flex; align-items: stretch; gap: 30px; height: 72px; overflow-x: auto; scrollbar-width: none; }
+.ledger-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #f5f8fa;
+  text-decoration: none;
+  letter-spacing: .03em;
+  white-space: nowrap;
+}
+
+.ledger-mark {
+  width: 34px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  color: #34d477;
+  border: 2px solid #2acb70;
+  border-radius: 3px;
+  font-size: 21px;
+  box-shadow: 0 0 18px rgba(45, 217, 120, .12);
+}
+
+.ledger-topbar nav {
+  display: flex;
+  align-items: stretch;
+  gap: 30px;
+  height: 72px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
 .ledger-topbar nav::-webkit-scrollbar { display: none; }
-.ledger-topbar nav a { display: flex; align-items: center; flex: 0 0 auto; color: #a9b7c3; text-decoration: none; font-size: 14px; }
-.ledger-topbar nav a:hover, .ledger-topbar nav a.active { color: #2dd978; }
-.ledger-user { display: flex; align-items: center; gap: 10px; color: #d4dde4; font-size: 14px; white-space: nowrap; }
-.user-avatar { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; background: #1b2932; font-size: 12px; }
+.ledger-topbar nav a {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  color: #a9b7c3;
+  text-decoration: none;
+  font-size: 14px;
+}
+.ledger-topbar nav a:hover,
+.ledger-topbar nav a.active { color: #2dd978; }
 
-/* Every tab sits on the same dashboard canvas. */
-.shell > main > :not(.dashboard-redesign) { width: min(1480px, 100%); margin-inline: auto; background: transparent !important; }
-.shell .pay-period-redesign,
-.shell .pay-period-content,
-.shell .pay-period-page,
-.shell .page-head,
-.shell .page-heading-row,
-.shell .widget-row,
-.shell .summary,
-.shell .stat-row { background: transparent !important; }
+.ledger-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #d4dde4;
+  font-size: 14px;
+  white-space: nowrap;
+}
+.user-avatar {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #1b2932;
+  border: 1px solid #29404d;
+  font-size: 12px;
+}
 
-.shell h1 { color: #eef4f7 !important; font-size: clamp(30px, 3vw, 42px); letter-spacing: -.025em; }
-.shell h2, .shell h3, .shell .panel header strong { color: #eef4f7 !important; }
-.shell .eyebrow { color: #2dd978 !important; font-size: 14px; }
-.shell .lede, .shell .muted, .shell .summary span, .shell .summary small, .shell .pp-note { color: #98a8b4 !important; }
+/* Every non-dashboard page uses the same content width, density and surface system. */
+.shell > main > :not(.dashboard-redesign) {
+  width: min(1480px, 100%);
+  margin-inline: auto;
+}
 
-/* Dashboard card system is now the platform card system. */
+.shell h1 { color: #eef4f7; font-size: clamp(30px, 3vw, 42px); letter-spacing: -.025em; }
+.shell h2,
+.shell h3,
+.shell .panel header strong { color: #eef4f7; }
+.shell .eyebrow { color: #2dd978; font-size: 14px; font-weight: 700; }
+.shell .lede,
+.shell .muted,
+.shell .summary span,
+.shell .summary small,
+.shell .pp-note { color: #98a8b4; }
+
+/* Dashboard-style cards and panels across Bills, Pay Period, Income, Reports and Accounts. */
 .shell .panel,
 .shell .widget,
 .shell .stat,
@@ -71,97 +125,167 @@ body { background: #05090d !important; }
 .shell .pp-range,
 .shell .account-form,
 .shell .bill-filters,
-.shell .add-bill-panel,
-.shell .glance-item {
-  border: 1px solid #223541 !important;
-  background: linear-gradient(180deg, rgba(12, 25, 33, .96), rgba(8, 17, 23, .96)) !important;
-  box-shadow: 0 8px 25px rgba(0, 0, 0, .16) !important;
-  border-radius: 12px !important;
+.shell .add-bill-panel {
+  border: 1px solid #223541;
+  background: linear-gradient(180deg, rgba(12, 25, 33, .97), rgba(8, 17, 23, .97));
+  box-shadow: 0 8px 25px rgba(0, 0, 0, .16);
+  border-radius: 16px;
 }
 
-.shell .widget,
-.shell .panel,
-.shell .pp-panel { padding-color: inherit; }
-.shell .summary, .shell .stat-row, .shell .pp-summary, .shell .widget-row { gap: 14px !important; }
-.shell .summary article, .shell .stat, .shell .pp-summary article { padding: 18px 20px !important; }
-.shell .summary strong, .shell .stat strong, .shell .pp-summary strong { color: #2dd978 !important; }
-.shell .summary .amber { color: #f59e0b !important; }
-.shell .summary .blue { color: #60a5fa !important; }
-.shell .negative strong, .shell .red { color: #ff6872 !important; }
+/* Intentional dashboard color accents instead of a flat legacy surface. */
+.shell .summary article:nth-child(4n+1),
+.shell .stat:nth-child(4n+1),
+.shell .widget:nth-child(4n+1) {
+  border-color: #176b3a;
+  background: linear-gradient(180deg, rgba(14, 40, 29, .92), rgba(8, 22, 18, .96));
+}
+.shell .summary article:nth-child(4n+2),
+.shell .stat:nth-child(4n+2),
+.shell .widget:nth-child(4n+2) {
+  border-color: #1d4f91;
+  background: linear-gradient(180deg, rgba(11, 31, 54, .92), rgba(8, 18, 30, .96));
+}
+.shell .summary article:nth-child(4n+3),
+.shell .stat:nth-child(4n+3),
+.shell .widget:nth-child(4n+3) {
+  border-color: #7b4a0c;
+  background: linear-gradient(180deg, rgba(48, 31, 10, .88), rgba(24, 18, 10, .96));
+}
+.shell .summary article:nth-child(4n+4),
+.shell .stat:nth-child(4n+4),
+.shell .widget:nth-child(4n+4) {
+  border-color: #63328d;
+  background: linear-gradient(180deg, rgba(43, 24, 61, .90), rgba(22, 14, 31, .96));
+}
+
+.shell .summary,
+.shell .stat-row,
+.shell .pp-summary { gap: 14px; }
+.shell .summary article,
+.shell .stat,
+.shell .pp-summary article { padding: 18px 20px; }
+.shell .summary strong,
+.shell .stat strong,
+.shell .pp-summary strong { color: #20d7ad; }
+.shell .summary article:nth-child(4n+2) strong,
+.shell .stat:nth-child(4n+2) strong { color: #60a5fa; }
+.shell .summary article:nth-child(4n+3) strong,
+.shell .stat:nth-child(4n+3) strong { color: #f59e0b; }
+.shell .summary article:nth-child(4n+4) strong,
+.shell .stat:nth-child(4n+4) strong { color: #c084fc; }
+.shell .summary .amber { color: #f59e0b; }
+.shell .summary .blue { color: #60a5fa; }
+.shell .negative strong { color: #ff6872 !important; }
 
 .shell .panel { overflow: hidden; margin-bottom: 18px; }
-.shell .panel > header, .shell .pp-panel > header {
+.shell .panel > header,
+.shell .pp-panel > header {
   min-height: 58px;
   padding: 0 20px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  border-bottom: 1px solid #20313c !important;
-  color: #2dd978 !important;
-  background: rgba(7, 17, 23, .54) !important;
+  border-bottom: 1px solid #20313c;
+  color: #2dd978;
 }
 
-/* Tables: same dark teal hierarchy as dashboard cards. */
-.shell .table-wrap { border-radius: 0 0 12px 12px; }
-.shell table { background: transparent !important; }
+/* Preserve the colorful Dashboard/Pay Period signal language. */
+.shell .status.submitted { color: #65b5ff; background: #142c42; border-color: #27547b; }
+.shell .status.partial,
+.shell .status.due-soon { color: #ffd25c; background: #403311; border-color: #66500d; }
+.shell .status.overdue { color: #ff6872; background: #3d171c; border-color: #6b2830; }
+.shell .status.new { color: #da9bff; background: #2c1736; border-color: #553068; }
+.shell .status.upcoming { color: #9fb0bd; background: #22282d; border-color: #38424b; }
+.shell .status.checking { color: #65b5ff; background: #142c42; border-color: #27547b; }
+.shell .status.savings { color: #ffd25c; background: #403311; }
+.shell .status.credit_card { color: #da9bff; background: #2c1736; border-color: #553068; }
+
+/* Tables inherit the dashboard dark/teal treatment instead of the legacy flat Bills look. */
+.shell table { background: transparent; }
 .shell th {
-  color: #8295a3 !important;
-  background: rgba(7, 17, 23, .82) !important;
-  border-bottom: 1px solid #20313c !important;
+  color: #8295a3;
+  background: rgba(7, 17, 23, .82);
+  border-bottom: 1px solid #20313c;
 }
-.shell td { border-top: 1px solid #1c303b !important; color: #dbe5eb !important; background: transparent !important; }
-.shell tbody tr:hover td { background: rgba(45, 217, 120, .035) !important; }
+.shell td { border-top-color: #1c303b; color: #dbe5eb; }
+.shell tbody tr:hover { background: rgba(45, 217, 120, .035); }
 
-/* Forms, filters and selectors match the dashboard controls. */
+/* Form controls / filters share the new shell while retaining each action's established color. */
 .shell input,
 .shell select,
 .shell textarea {
-  background: #071117 !important;
-  border: 1px solid #2a3d48 !important;
-  color: #edf3f6 !important;
-  border-radius: 9px !important;
+  background: #071117;
+  border: 1px solid #2a3d48;
+  color: #edf3f6;
+  border-radius: 10px;
 }
-.shell input:focus, .shell select:focus, .shell textarea:focus {
-  border-color: #2dd978 !important;
-  outline: 1px solid #2dd978 !important;
+.shell input:focus,
+.shell select:focus,
+.shell textarea:focus {
+  border-color: #2dd978;
+  outline: 1px solid #2dd978;
   outline-offset: 0;
 }
-.shell label, .shell .field label, .shell .field .label { color: #bac6ce !important; }
 
-.shell button, .shell .button {
-  background: #18c987 !important;
-  color: #03140f !important;
-  border: 1px solid #18c987 !important;
-  border-radius: 9px !important;
-  font-weight: 700;
+/* Do NOT globally recolor buttons. Existing button/action colors are business UI signals. */
+.shell button,
+.shell .button { box-shadow: none; }
+.shell button.ghost,
+.shell .button.ghost {
+  background: transparent;
+  color: #dce7ec;
+  border: 1px solid #2a3d48;
 }
-.shell button:hover, .shell .button:hover { filter: brightness(1.05); }
-.shell button.ghost, .shell .button.ghost {
-  background: transparent !important;
-  color: #dce7ec !important;
-  border: 1px solid #2a3d48 !important;
+.shell button.danger { color: #ff6872; }
+
+.shell .bill-filters {
+  padding: 16px;
+  margin-bottom: 18px;
+  border-color: #49305e;
+  background: linear-gradient(135deg, rgba(126, 34, 206, .10), rgba(59, 130, 246, .05));
 }
+.shell .page-heading-row,
+.shell .page-head,
+.shell .pp-heading { margin-bottom: 20px; }
+.shell .month-pill { border-color: #223541; background: #0a151b; }
 
-.shell .bill-filters { padding: 16px !important; margin-bottom: 18px; }
-.shell .page-heading-row, .shell .page-head, .shell .pp-heading { margin-bottom: 20px; }
-.shell .month-pill { border: 1px solid #223541 !important; background: #0a151b !important; color: #dce7ec !important; }
-.shell .pp-range { padding: 16px 20px !important; }
+/* Give the Income card the same visual energy as Dashboard, without changing its action semantics. */
+.shell .page-head + .widget-row .widget:first-child {
+  border-color: #176b3a;
+  background:
+    radial-gradient(circle at 88% 8%, rgba(34, 197, 94, .10), transparent 34%),
+    linear-gradient(180deg, rgba(12, 31, 25, .96), rgba(8, 18, 17, .97));
+}
+.shell .page-head + .widget-row .widget:first-child > header strong { color: #2dd978; }
 
-/* Status pills retain semantic color but use the dashboard dark palette. */
-.shell .status { border-radius: 999px !important; }
-.shell .status.submitted, .shell .status.paid { background: #11351f !important; color: #4ade80 !important; }
-.shell .status.overdue { background: #3d171c !important; color: #ff6872 !important; border-color: #6b2830 !important; }
-.shell .status.partial, .shell .status.due-soon { background: #422d0a !important; color: #fbbf24 !important; }
+/* Preserve Pay Period's approved content design while using only the global header. */
+.shell .pay-period-redesign { min-height: 0; background: transparent; }
+.shell .pay-period-content { padding: 0; }
+.shell .pp-range { padding: 16px 20px; border-color: #234d7d; }
+.shell .pp-summary article:nth-child(1) { border-color: #176b3a; }
+.shell .pp-summary article:nth-child(2) { border-color: #7b4a0c; }
+.shell .pp-summary article:nth-child(3) { border-color: #1d4f91; }
+.shell .pp-summary article:nth-child(4) { border-color: #63328d; }
 
-/* Dashboard itself uses the global shell/header; never duplicate it. */
-.shell .dashboard-redesign { min-height: 0; background: transparent !important; }
+/* Dashboard itself should not render a second shell/header. */
+.shell .dashboard-redesign { min-height: 0; background: transparent; }
 .shell .dashboard-redesign > .ledger-topbar { display: none !important; }
 
 @media (max-width: 980px) {
-  .ledger-topbar { grid-template-columns: 1fr auto; padding: 10px 14px; gap: 10px 16px; }
-  .ledger-topbar nav { grid-column: 1 / -1; order: 3; height: auto; gap: 18px; padding: 8px 0; }
-  .shell > main { padding: 14px 10px 28px; }
+  .ledger-topbar {
+    grid-template-columns: 1fr auto;
+    padding: 10px 14px;
+    gap: 10px 16px;
+  }
+  .ledger-topbar nav {
+    grid-column: 1 / -1;
+    order: 3;
+    height: auto;
+    gap: 18px;
+    padding: 8px 0;
+  }
+  .shell > main { padding: 14px 12px 28px; }
 }
 
 @media (max-width: 620px) {
@@ -169,5 +293,7 @@ body { background: #05090d !important; }
   .ledger-brand strong { font-size: 13px; }
   .ledger-topbar nav { gap: 16px; }
   .shell > main { padding-inline: 10px; }
-  .shell .summary, .shell .stat-row, .shell .pp-summary { grid-template-columns: 1fr !important; }
+  .shell .summary,
+  .shell .stat-row,
+  .shell .pp-summary { grid-template-columns: 1fr; }
 }
