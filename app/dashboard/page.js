@@ -2,10 +2,10 @@ import { getLedgerBills, getLedgerOverview, normalizeLedgerMonth, summarizeLedge
 import { toRingSegments } from '../../src/dashboard.js';
 import { labelForDashboardMonth, resolveDashboardMonth } from '../../src/dashboard-months.js';
 import { greetingForCentralTime } from '../../src/time-greeting.js';
-import { SAMPLE_SAVINGS_GOALS, SAMPLE_TIP } from '../../src/sample-data.js';
 import PersistedAccountsSummary from './persisted-accounts-summary.js';
 import MonthSelector from './month-selector.js';
 import MonthlyIncomeCard from './monthly-income-card.js';
+import GoalsCard from './goals-card.js';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,10 +16,6 @@ const asDate = (value) => new Date(`${value}T00:00:00Z`);
 const plural = (count, noun) => `${count} ${noun}${count === 1 ? '' : 's'}`;
 const RING_RADIUS = 54;
 const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
-
-function SampleBadge() {
-  return <span className="badge-sample" title="Placeholder data — not from the ledger">Sample</span>;
-}
 
 export default async function DashboardPage({ searchParams }) {
   const params = await searchParams;
@@ -103,7 +99,7 @@ export default async function DashboardPage({ searchParams }) {
       <section className="widget-row">
         <article className="widget"><header><strong>Recent Activity</strong><a href={`/?month=${selectedMonth}`}>View All</a></header>{activity.length === 0 ? <p className="muted">No payments recorded yet.</p> : <ul className="activity">{activity.map((entry) => <li key={entry.id}><span className={`bubble ${entry.tone}`} aria-hidden="true" /><span className="activity-body"><b>{entry.label}</b><small>{entry.payee}</small></span><span className="activity-meta"><small>{shortDate.format(asDate(entry.date))}</small><b className="green">{money.format(entry.amount)}</b></span></li>)}</ul>}</article>
         <PersistedAccountsSummary />
-        <article className="widget"><header><strong>Savings Goals</strong><SampleBadge /></header><ul className="goals">{SAMPLE_SAVINGS_GOALS.map((goal) => { const percent = Math.round((goal.saved / goal.target) * 100); return <li key={goal.id}><span className="goal-head"><b>{goal.name}</b><small>{money.format(goal.saved)} / {money.format(goal.target)}</small></span><span className="goal-bar"><span className="progress-track"><span className={`progress-fill ${goal.tone}`} style={{ width: `${percent}%` }} /></span><small>{percent}%</small></span></li>; })}</ul><footer className="muted">{SAMPLE_TIP}</footer></article>
+        <GoalsCard rows={rows} />
       </section>
     </>
   );
