@@ -67,3 +67,19 @@ test('one month ahead follows the funded emergency milestone', () => {
   assert.equal(goals.oneMonthAhead.target, 5800);
   assert.equal(goals.oneMonthAhead.remaining, 5000);
 });
+
+
+test('actual expense completion keeps populated and missing bill counts separate', () => {
+  const goals = buildFinancialGoals({
+    rows: [
+      { actualAmount: 100 },
+      { actualAmount: 200 },
+      { actualAmount: null },
+      { actualAmount: null },
+    ],
+  });
+
+  assert.equal(goals.actualExpenses.actualCount, 2);
+  assert.equal(goals.actualExpenses.missingActualCount, 2);
+  assert.equal(goals.actualExpenses.complete, false);
+});
