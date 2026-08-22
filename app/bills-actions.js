@@ -105,11 +105,6 @@ export async function removePaymentAction(data) {
 
 export async function archiveBillAction(data) {
   const common = commonInput(data);
-  if (value(data, 'intent') !== 'closed') {
-    await archiveBill({ id: common.id });
-    redirectToBills({ ...common, message: 'Bill archived.' });
-  }
-
   const rows = await getLedgerBills({ selectedMonth: common.month });
   const sourceRows = rows.filter((row) => row.id === common.id);
   const sourceBill = sourceRows.find((row) => row.rowKey === common.rowKey) ?? sourceRows[0];
