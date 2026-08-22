@@ -61,7 +61,7 @@ export function buildFinancialGoals({ rows = [], emergencyFundSaved = 0, oneMont
   else if (monthAheadRemaining > 0) currentPriority = { id: 'one-month-ahead', name: 'Get One Month Ahead', status: 'active', remaining: monthAheadRemaining, detail: 'Build one full month of operating expenses in advance.' };
   else currentPriority = { id: 'next-payoff', name: 'Choose Next Payoff Target', status: 'ready', remaining: null, detail: 'The runway milestones are funded; redirect the rolling cash to the next obligation.' };
   return {
-    actualExpenses: { current: actuals.actual, target: MONTHLY_ACTUAL_EXPENSE_TARGET, remainingToCut: expenseGap, complete: actuals.missingActualCount === 0 && expenseGap === 0, missingActualCount: actuals.missingActualCount },
+    actualExpenses: { current: actuals.actual, target: MONTHLY_ACTUAL_EXPENSE_TARGET, remainingToCut: expenseGap, complete: actuals.missingActualCount === 0 && expenseGap === 0, actualCount: actuals.actualCount, missingActualCount: actuals.missingActualCount },
     emergencyFund: { current: emergencySaved, target: EMERGENCY_FUND_TARGET, remaining: emergencyRemaining, complete: emergencyRemaining === 0 },
     oneMonthAhead: { current: monthAheadSaved, target: MONTHLY_ACTUAL_EXPENSE_TARGET, remaining: monthAheadRemaining, complete: monthAheadRemaining === 0 },
     freedMonthlyCash: freedCash,
