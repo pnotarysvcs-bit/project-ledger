@@ -5,9 +5,10 @@ import { usePathname } from 'next/navigation';
 
 const LINKS = [
   { href: '/dashboard', label: 'Dashboard' },
-  { href: '/', label: 'Bills' },
   { href: '/pay-period', label: 'Pay Period' },
-  { href: '/reconcile', label: 'Statements' },
+  { href: '/', label: 'Bills' },
+  { href: '/income', label: 'Income' },
+  { href: '/reconcile', label: 'Reconcile' },
   { href: '/accounts', label: 'Accounts' },
 ];
 
@@ -15,23 +16,34 @@ export default function Nav() {
   const pathname = usePathname();
 
   return (
-    <nav className="sidebar" aria-label="Sections">
-      <div className="brand">
-        <strong>Project Ledger</strong>
-        <small>Financial Management</small>
-      </div>
-      <ul>
+    <header className="ledger-topbar platform-topbar">
+      <Link className="ledger-brand" href="/dashboard">
+        <span className="ledger-mark" aria-hidden="true">$</span>
+        <strong>PROJECT LEDGER</strong>
+      </Link>
+
+      <nav aria-label="Project Ledger sections">
         {LINKS.map(({ href, label }) => {
           const active = pathname === href;
           return (
-            <li key={href}>
-              <Link href={href} className={active ? 'active' : undefined} aria-current={active ? 'page' : undefined}>
-                {label}
-              </Link>
-            </li>
+            <Link
+              key={href}
+              href={href}
+              className={active ? 'active' : undefined}
+              aria-current={active ? 'page' : undefined}
+            >
+              {label}
+            </Link>
           );
         })}
-      </ul>
-    </nav>
+      </nav>
+
+      <div className="ledger-user" aria-label="Current user">
+        <span aria-hidden="true">♧</span>
+        <span className="user-avatar">KF</span>
+        <span>Kim</span>
+        <span aria-hidden="true">⌄</span>
+      </div>
+    </header>
   );
 }

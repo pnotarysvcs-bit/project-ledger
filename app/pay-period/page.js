@@ -34,22 +34,6 @@ export default async function PayPeriodPage({ searchParams }) {
 
   return (
     <div className="pay-period-redesign">
-      <header className="ledger-topbar">
-        <Link className="ledger-brand" href="/dashboard">
-          <span className="ledger-mark" aria-hidden="true">$</span>
-          <strong>PROJECT LEDGER</strong>
-        </Link>
-        <nav aria-label="Project Ledger sections">
-          <Link href="/dashboard">Dashboard</Link>
-          <Link className="active" aria-current="page" href="/pay-period">Pay Period</Link>
-          <Link href="/">Bills</Link>
-          <Link href="/income">Income</Link>
-          <Link href="/dashboard#goals">Goals</Link>
-          <Link href="/reconcile">Reports</Link>
-        </nav>
-        <div className="ledger-user"><span aria-hidden="true">♧</span><span className="user-avatar">KF</span><span>Kim</span><span aria-hidden="true">⌄</span></div>
-      </header>
-
       <div className="pay-period-content">
         <div className="pay-period-page">
           <header className="pp-heading">

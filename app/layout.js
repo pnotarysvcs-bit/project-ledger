@@ -3,6 +3,7 @@ import './bills-enhancements.css';
 import './bills-hotfix.css';
 import './pay-period.css';
 import './dashboard-goals.css';
+import './platform-shell.css';
 import Nav from './nav.js';
 import PwaRegister from './pwa-register.js';
 
