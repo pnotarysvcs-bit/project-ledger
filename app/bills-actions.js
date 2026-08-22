@@ -5,9 +5,8 @@ import { revalidatePath } from 'next/cache';
 import { getLedgerBills, normalizeLedgerMonth } from '../src/ledger-bills-data.js';
 import { applyBillFilters, billFilterQuery, getBillFilters } from '../src/bills/filters.js';
 import { monthlyEquivalent, recommendNextPayoff } from '../src/goals.js';
-import { recordClosedBillRollover } from '../src/goals-store.js';
+import { closeBillWithRollover } from '../src/goals-store.js';
 import {
-  archiveBill,
   changePayment,
   createBill,
   deletePayment,
@@ -116,8 +115,7 @@ export async function archiveBillAction(data) {
     : monthlyEquivalent(sourceBill);
   const recommendation = recommendNextPayoff(rows, common.id);
 
-  await archiveBill({ id: common.id });
-  if (freedMonthlyCash > 0) await recordClosedBillRollover({ sourceBill, targetBill: recommendation, closedMonth: common.month, monthlyAmount: freedMonthlyCash });
+  await closeBillWithRollover({ sourceBill, targetBill: recommendation, closedMonth: common.month, monthlyAmount: freedMonthlyCash });
 
   const allocation = freedMonthlyCash > 0 ? `${money.format(freedMonthlyCash)}/month freed.` : 'Closed with no recurring monthly rollover.';
   const next = recommendation ? ` Suggested next payoff: ${recommendation.payee}.` : ' No automatic payoff candidate was identified; choose the next target manually.';
