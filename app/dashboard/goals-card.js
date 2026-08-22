@@ -3,6 +3,8 @@ import { getGoalRollovers } from '../../src/goals-store.js';
 
 const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
 const percent = (current, target) => target > 0 ? Math.min(100, Math.round((current / target) * 100)) : 0;
+const shortDate = new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric', year: 'numeric' });
+const asDate = (value) => new Date(`${value}T00:00:00Z`);
 
 function GoalProgress({ label, current, target, tone, detail }) {
   const value = percent(current, target);
@@ -26,7 +28,7 @@ function TimelineStep({ number, label, target, state, tone, percentValue }) {
   );
 }
 
-export default async function GoalsCard({ rows = [] }) {
+export default async function GoalsCard({ rows = [], activity = [], selectedMonth = '' }) {
   let rollovers = [];
   try { rollovers = await getGoalRollovers(); } catch { rollovers = []; }
 
@@ -44,7 +46,11 @@ export default async function GoalsCard({ rows = [] }) {
   const nextAllocation = latestAllocation?.target_name || (goals.currentPriority.id === 'emergency-fund' ? 'Emergency Fund' : goals.currentPriority.name);
 
   return (
-    <section className="goals-dashboard" aria-label="Goals and financial runway">
+    <section id="goals" className="goals-dashboard" aria-label="Goals and financial runway">
+      <article className="widget activity-card">
+        <header><strong>Recent Activity</strong><a href={`/?month=${selectedMonth}`}>View All</a></header>
+        {activity.length === 0 ? <p className="muted">No payments recorded yet.</p> : <ul className="activity">{activity.map((entry) => <li key={entry.id}><span className="activity-check" aria-hidden="true">✓</span><span className="activity-body"><b>{entry.label}</b><small>{entry.payee}</small></span><span className="activity-meta"><small>{shortDate.format(asDate(entry.date))}</small><b>{money.format(entry.amount)}</b></span></li>)}</ul>}
+      </article>
       <article className="widget runway-card">
         <header><strong>Goals &amp; Financial Runway</strong><span className="goal-live">Live</span></header>
         <p className="muted"><b>Current priority:</b> <span className="goal-priority">{goals.currentPriority.name}</span></p>
