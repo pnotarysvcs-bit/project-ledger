@@ -418,3 +418,15 @@ export function getLedgerOverview(rows) {
       count: overdueCount,
       amount: overdueAmount,
     },
+    {
+      key: 'partial',
+      label: 'Partial',
+      count: partial.length,
+      amount: partial.reduce((sum, bill) => sum + (bill.submitted ?? 0), 0),
+    },
+  ];
+}
+
+export function groupLedgerBills(rows) {
+  return groupBillsByType(rows);
+}
