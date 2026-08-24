@@ -153,7 +153,11 @@ export function buildLedgerRows(bills, occurrences, payments, { selectedMonth, a
     const persisted = occurrencesByBill.get(bill.id) ?? [];
     const expectedDates = dueDatesForBill(bill, normalized);
     const occurrenceMap = new Map(persisted.filter((row) => row.due_date).map((row) => [row.due_date, row]));
-    const dates = expectedDates;
+    // Persisted occurrences are the financial record of truth. Keep them
+    // visible even when older or incomplete recurrence metadata cannot derive
+    // the same date (for example, a missing or future bi-weekly anchor).
+    const persistedDates = persisted.map((row) => row.due_date).filter(Boolean);
+    const dates = (expectedDates.length ? expectedDates : [...new Set(persistedDates)]).sort();
 
     for (const [dateIndex, dueDate] of dates.entries()) {
       const occurrence = occurrenceMap.get(dueDate) ?? persisted[dateIndex] ?? null;
@@ -414,15 +418,3 @@ export function getLedgerOverview(rows) {
       count: overdueCount,
       amount: overdueAmount,
     },
-    {
-      key: 'partial',
-      label: 'Partial',
-      count: partial.length,
-      amount: partial.reduce((sum, bill) => sum + (bill.submitted ?? 0), 0),
-    },
-  ];
-}
-
-export function groupLedgerBills(rows) {
-  return groupBillsByType(rows);
-}
