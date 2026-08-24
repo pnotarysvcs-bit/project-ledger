@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { classifyLedgerBill, getLedgerBills, summarizeLedgerBills } from '../src/ledger-bills-data.js';
+import { buildLedgerRows, classifyLedgerBill, getLedgerBills, summarizeLedgerBills } from '../src/ledger-bills-data.js';
 
 function jsonResponse(value) {
   return new Response(JSON.stringify(value), {
@@ -163,6 +163,54 @@ test('missing amount and migration data-quality counts remain separate', () => {
   assert.equal(summary.dataQualityCount, 1);
   assert.equal(summary.overdueCount, 1);
   assert.equal(summary.overdue, 25);
+});
+
+test('persisted bi-weekly occurrences remain visible when recurrence metadata is incomplete', () => {
+  const bill = {
+    id: 'affirm-amazon',
+    bill_name: 'Affirm - Amazon',
+    bill_type: 'Personal',
+    category: 'Online Credit',
+    account: 'TCU',
+    budget: '64.52',
+    frequency: 'bi-weekly',
+    due_day: 7,
+    recurrence_anchor: null,
+    start_month: '2026-06-01',
+    notes: null,
+    is_active: true,
+  };
+  const occurrence = {
+    id: 'affirm-august',
+    bill_id: bill.id,
+    month: '2026-08-01',
+    occurrence_budget_amount: '64.52',
+    actual_amount: '64.52',
+    due_date: '2026-08-07',
+    installment_key: '2026-08-07',
+    migration_incomplete: false,
+  };
+  const payment = {
+    id: 'affirm-payment',
+    bill_id: bill.id,
+    occurrence_id: occurrence.id,
+    amount: '64.52',
+    payment_date: '2026-08-11',
+    payment_month: '2026-08-01',
+    funding_account: 'TCU',
+    notes: null,
+  };
+
+  const rows = buildLedgerRows([bill], [occurrence], [payment], {
+    selectedMonth: '2026-08',
+    asOf: new Date('2026-08-24T00:00:00Z'),
+  });
+
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].payee, 'Affirm - Amazon');
+  assert.equal(rows[0].nextDue, '2026-08-07');
+  assert.equal(rows[0].submitted, 64.52);
+  assert.equal(rows[0].status, 'submitted');
 });
 
 
