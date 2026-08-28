@@ -46,3 +46,17 @@ test('dashboard renders the income vs expenses card', async () => {
   assert.match(card, /Paychecks \{money\.format\(net\.paychecks\)\}/);
   assert.match(card, /Monthly Expenses/);
 });
+
+test('the income card renders on the dashboard, pay period, and bills pages', async () => {
+  const pages = {
+    dashboard: '../app/dashboard/page.js',
+    'pay period': '../app/pay-period/page.js',
+    bills: '../app/page.js',
+  };
+
+  for (const [name, path] of Object.entries(pages)) {
+    const source = await readFile(new URL(path, import.meta.url), 'utf8');
+    assert.match(source, /import IncomeExpensesCard from/, `${name} imports the income card`);
+    assert.match(source, /<IncomeExpensesCard summary=\{/, `${name} renders the income card`);
+  }
+});

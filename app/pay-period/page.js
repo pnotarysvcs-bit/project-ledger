@@ -1,6 +1,8 @@
 import Link from 'next/link';
 import { getPayPeriodBudget, normalizePayPeriodOffset } from '../../src/pay-period-data.js';
 import { getLatestCashSnapshot } from '../../src/cash-guard.js';
+import { getLedgerBills, summarizeLedgerBills } from '../../src/ledger-bills-data.js';
+import IncomeExpensesCard from '../dashboard/income-expenses-card.js';
 
 export const dynamic = 'force-dynamic';
 
@@ -47,6 +49,18 @@ export default async function PayPeriodPage({ searchParams }) {
     loadError = error.message;
   }
 
+  // The funding month the paycheck lands in, so the income card matches the
+  // period being viewed rather than always showing the current month.
+  const fundingMonth = budget?.period?.paycheckDate?.slice(0, 7) ?? null;
+  let billSummary = {};
+  if (fundingMonth) {
+    try {
+      billSummary = summarizeLedgerBills(await getLedgerBills({ selectedMonth: fundingMonth }));
+    } catch {
+      billSummary = {};
+    }
+  }
+
   return (
     <div className="pay-period-redesign">
       <div className="pay-period-content">
@@ -76,6 +90,7 @@ export default async function PayPeriodPage({ searchParams }) {
               <article className={budget.totals.available < 0 ? 'negative' : ''}><span>{budget.totals.available < 0 ? 'Pay-period funding gap' : 'Pay-period funding surplus'}</span><strong>{money.format(budget.totals.available < 0 ? budget.totals.fundingGap : budget.totals.available)}</strong></article>
               <article><span>Current checking available</span><strong>{money.format(cashSnapshot?.availableCash ?? 0)}</strong><small>snapshot as of {displaySnapshotDate(cashSnapshot?.cashAsOf)}</small></article>
             </section>
+            <IncomeExpensesCard summary={billSummary} selectedMonth={fundingMonth} />
             <p className="pp-note">The first four figures are strictly biweekly. Current checking available is shown separately because it can include money received before this pay period and money already committed elsewhere.</p>
             <div className="pp-columns">
               <BudgetPanel title="Personal · TCU" bills={budget.personal} empty="No remaining personal obligations need funding before the next paycheck."/>
