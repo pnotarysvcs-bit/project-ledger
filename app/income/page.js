@@ -17,6 +17,8 @@ export default async function IncomePage({ searchParams }) {
         </div>
         <div className="head-actions"><MonthSelector selectedMonth={selectedMonth} /></div>
       </header>
+      {params?.incomeSaved === '1' && <p className="notice" role="status">Paycheck added.</p>}
+      {params?.incomeRemoved === '1' && <p className="notice" role="status">Paycheck removed.</p>}
       <section className="widget-row">
         <MonthlyIncomeCard selectedMonth={selectedMonth} searchParams={params} />
       </section>

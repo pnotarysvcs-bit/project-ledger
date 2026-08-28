@@ -150,3 +150,11 @@ table.mini td:last-child, table.mini th:last-child { padding-right: 0; }
 button:disabled { cursor: not-allowed; opacity: .45; }
 button.danger { border-color: #6b2830; color: #ff6872; }
 button.danger:hover { background: #3d171c; }
+
+.income-entries { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.income-entries li { display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 10px; padding: 8px 10px; border: 1px solid #2a2f33; border-radius: 8px; }
+.income-entries .entry-date { color: #9aa5ad; font-size: 12px; min-width: 52px; }
+.income-entries .entry-label { color: #9aa5ad; font-size: 12px; }
+.income-entries strong { font-size: 15px; }
+.income-entries .entry-remove { background: none; border: 0; color: #9aa5ad; font-size: 12px; text-decoration: underline; cursor: pointer; padding: 2px 4px; }
+.income-entries .entry-remove:hover { color: #ff4754; }

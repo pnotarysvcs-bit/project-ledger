@@ -34,10 +34,13 @@ test('monthly income is read for the selected month only', { concurrency: false 
   }
 });
 
-test('income is paychecks plus notary income, counting a paycheck only once', { concurrency: false }, async () => {
+test('months recorded before itemized paychecks still count each paycheck once', { concurrency: false }, async () => {
   withSupabaseEnv();
   global.fetch = async (url) => {
     const value = String(url);
+    if (value.includes('ledger_income_entries')) {
+      return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    }
     if (value.includes('ledger_pay_period_finances')) {
       return new Response(JSON.stringify([
         { period: 1, regular_income: '2992.15', notary_income: '1030.78', ahead_contribution: '0', target_month: '2026-08-01' },
@@ -134,4 +137,36 @@ test('income is only paychecks and notary income', () => {
   assert.equal(income.notarySupport, 500);
   assert.equal(income.totalIncome, 3500);
   assert.equal(summarizeIncome({}).totalIncome, 0);
+});
+
+test('itemized paychecks are summed, so two equal paychecks both count', () => {
+  const income = summarizeIncome({
+    entries: [
+      { id: 'a', amount: 2992, kind: 'paycheck' },
+      { id: 'b', amount: 2992, kind: 'paycheck' },
+    ],
+    notarySupport: 1050,
+  });
+
+  assert.equal(income.paychecks, 5984, 'two separate paychecks, not one deduplicated to 2992');
+  assert.equal(income.totalIncome, 7034);
+  assert.equal(income.usesEntries, true);
+});
+
+test('itemized paychecks ignore the old monthly total and posted payroll', () => {
+  const income = summarizeIncome({
+    entries: [{ id: 'a', amount: 2992, kind: 'paycheck' }],
+    postedPayroll: 2992,
+    recordedMonthlyIncome: 5984,
+    notarySupport: 0,
+  });
+
+  assert.equal(income.totalIncome, 2992, 'the entry is the record; legacy totals are not added on top');
+});
+
+test('a month with no entries falls back to the larger of posted payroll and the monthly total', () => {
+  const income = summarizeIncome({ entries: [], postedPayroll: 3337, recordedMonthlyIncome: 5984.15, notarySupport: 1050 });
+
+  assert.equal(income.usesEntries, false);
+  assert.equal(income.totalIncome, 7034.15);
 });
