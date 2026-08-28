@@ -144,24 +144,26 @@ test('itemized paychecks are summed, so two equal paychecks both count', () => {
     entries: [
       { id: 'a', amount: 2992, kind: 'paycheck' },
       { id: 'b', amount: 2992, kind: 'paycheck' },
+      { id: 'c', amount: 1050, kind: 'notary' },
     ],
-    notarySupport: 1050,
   });
 
   assert.equal(income.paychecks, 5984, 'two separate paychecks, not one deduplicated to 2992');
+  assert.equal(income.notarySupport, 1050);
   assert.equal(income.totalIncome, 7034);
   assert.equal(income.usesEntries, true);
 });
 
-test('itemized paychecks ignore the old monthly total and posted payroll', () => {
+test('income entries are the only source: pay period figures are ignored', () => {
   const income = summarizeIncome({
     entries: [{ id: 'a', amount: 2992, kind: 'paycheck' }],
     postedPayroll: 2992,
     recordedMonthlyIncome: 5984,
-    notarySupport: 0,
+    notarySupport: 1050,
   });
 
-  assert.equal(income.totalIncome, 2992, 'the entry is the record; legacy totals are not added on top');
+  assert.equal(income.notarySupport, 0, 'notary income comes from entries, not the pay period rows');
+  assert.equal(income.totalIncome, 2992);
 });
 
 test('a month with no entries falls back to the larger of posted payroll and the monthly total', () => {

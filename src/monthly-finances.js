@@ -44,11 +44,12 @@ export async function listIncomeEntries(selectedMonth) {
 export async function addIncomeEntry(selectedMonth, { amount, receivedOn, kind = 'paycheck', notes = null } = {}) {
   const normalized = normalizeLedgerMonth(selectedMonth);
   const month = `${normalized}-01`;
+  if (!['paycheck', 'notary', 'other'].includes(kind)) throw new Error('Income must be a paycheck, notary income, or other.');
   const value = Number(amount);
-  if (!Number.isFinite(value) || value <= 0) throw new Error('Paycheck amount must be greater than zero.');
+  if (!Number.isFinite(value) || value <= 0) throw new Error('Income amount must be greater than zero.');
 
   const received = String(receivedOn ?? '').trim() || month;
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(received)) throw new Error('Enter the date the paycheck was received.');
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(received)) throw new Error('Enter the date the income was received.');
   if (!received.startsWith(normalized)) throw new Error(`That date is outside ${normalized}. Switch months, or correct the date.`);
 
   const rows = await supabaseRequest('ledger_income_entries', {
@@ -93,13 +94,17 @@ export async function getIncomeBreakdown(selectedMonth) {
 
 // One income figure: paychecks plus notary income, nothing else.
 //
-// Each paycheck is its own dated entry, so paychecks are simply summed -- two
-// paychecks of the same amount are two rows, and one paycheck is one row no
-// matter how many times the page is opened.
+// The Income tab is the source of truth. Every paycheck and every notary
+// deposit is its own dated entry there, so income is simply the sum of those
+// entries -- two paychecks of the same amount are two rows, and one paycheck is
+// one row no matter how many times the page is opened. Nothing is read from the
+// pay period rows, which plan a two-week window rather than record income.
 //
-// Months predating income entries fall back to the old shape, where a paycheck
-// could be posted to a pay period or recorded as a single monthly total. Those
-// are the same money, so the larger of the two is used rather than the sum.
+// The one exception is a month with no entries at all, which can only happen
+// before the migration that creates them has run. Those months fall back to the
+// old shape -- a paycheck posted to a pay period or recorded as a single
+// monthly total, the same money either way, so the larger of the two is used --
+// purely so the pages are not blank in that window.
 export function summarizeIncome({ entries, postedPayroll = 0, recordedMonthlyIncome = 0, notarySupport = 0, periods = [] } = {}) {
   const rows = entries ?? [];
   const hasEntries = rows.length > 0;
@@ -111,7 +116,7 @@ export function summarizeIncome({ entries, postedPayroll = 0, recordedMonthlyInc
     ? entryTotal('paycheck') + entryTotal('other')
     : Math.max(number(postedPayroll), number(recordedMonthlyIncome));
   const notary = hasEntries
-    ? entryTotal('notary') + number(notarySupport)
+    ? entryTotal('notary')
     : number(notarySupport);
 
   return {

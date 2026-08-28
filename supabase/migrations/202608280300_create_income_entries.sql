@@ -61,4 +61,27 @@ where f.income > 0
     from public.ledger_income_entries e
     where e.month = f.month
       and e.source = 'migrated'
+      and e.kind = 'paycheck'
+  );
+
+-- Backfill notary income the same way. It previously lived only on the pay
+-- period rows; the Income tab is now the single source of truth for income, so
+-- it has to exist as an entry or the monthly total would drop by this amount.
+insert into public.ledger_income_entries (month, received_on, amount, kind, source, notes)
+select
+  p.month,
+  p.month,
+  sum(p.notary_income),
+  'notary',
+  'migrated',
+  'Carried over from notary income recorded on the pay period rows.'
+from public.ledger_pay_period_finances p
+group by p.month
+having sum(p.notary_income) > 0
+  and not exists (
+    select 1
+    from public.ledger_income_entries e
+    where e.month = p.month
+      and e.source = 'migrated'
+      and e.kind = 'notary'
   );
