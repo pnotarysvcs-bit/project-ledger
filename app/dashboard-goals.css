@@ -128,3 +128,6 @@
 }
 
 .dashboard-redesign .progress-fill { display: block; min-height: 100%; }
+
+.rolling-cash-card strong.net-positive { color: #22c55e; }
+.rolling-cash-card strong.net-negative { color: #ff4754; }
