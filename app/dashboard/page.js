@@ -31,7 +31,7 @@ export default async function DashboardPage({ searchParams }) {
     .slice(0, 4);
 
   const normalizedMonth = normalizeLedgerMonth(selectedMonth);
-  const summary = summarizeLedgerBills(rows, now);
+  const summary = loadError ? null : summarizeLedgerBills(rows, now);
 
   return (
     <div className="dashboard-redesign">

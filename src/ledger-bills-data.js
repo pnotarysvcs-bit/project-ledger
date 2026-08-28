@@ -347,6 +347,10 @@ export function summarizeLedgerBills(rows, asOf = new Date()) {
     const carryCount = Number(bill.overdueCount ?? 0);
     if (carryCount > 0 && !seenOverdueBills.has(bill.id)) {
       summary.overdue += Number(bill.overdueOutstanding ?? 0);
+      // Prior-month occurrences only. Tracked apart from summary.overdue, which
+      // also holds current-month overdue balances that summary.remaining
+      // already counts.
+      summary.overdueCarryForward += Number(bill.overdueOutstanding ?? 0);
       summary.overdueCount += carryCount;
       seenOverdueBills.add(bill.id);
     }
@@ -370,6 +374,7 @@ export function summarizeLedgerBills(rows, asOf = new Date()) {
     remaining: 0,
     credit: 0,
     overdue: 0,
+    overdueCarryForward: 0,
     dueSoon: 0,
     activeCount: 0,
     submittedCount: 0,

@@ -9,13 +9,16 @@ export function calculateMonthlyNet(income = {}, summary = {}) {
   const totalIncome = number(income.totalIncome);
   const expenses = number(summary.total);
   const paid = number(summary.totalPaid);
-  const stillToPay = Math.max(0, number(summary.remaining) + number(summary.overdue));
+  // summary.remaining already includes current-month overdue balances, so only
+  // prior-month carry-forward is added on top of it.
+  const stillToPay = Math.max(0, number(summary.remaining) + number(summary.overdueCarryForward));
   const net = totalIncome - expenses;
 
   return {
     income: totalIncome,
     paychecks: number(income.paychecks),
     notarySupport: number(income.notarySupport),
+    otherIncome: number(income.otherIncome),
     expenses,
     paid,
     stillToPay,

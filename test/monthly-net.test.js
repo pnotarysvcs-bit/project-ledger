@@ -5,7 +5,7 @@ import { readFile } from 'node:fs/promises';
 import { calculateMonthlyNet } from '../src/monthly-net.js';
 
 const income = { paychecks: 3200, notarySupport: 500, totalIncome: 3700 };
-const summary = { total: 2800, totalPaid: 1200, remaining: 1400, overdue: 200, incompleteCount: 0 };
+const summary = { total: 2800, totalPaid: 1200, remaining: 1400, overdue: 200, overdueCarryForward: 200, incompleteCount: 0 };
 
 test('net is household income minus monthly expenses', () => {
   const net = calculateMonthlyNet(income, summary);
@@ -15,7 +15,7 @@ test('net is household income minus monthly expenses', () => {
   assert.equal(net.net, 900);
   assert.equal(net.covered, true);
   assert.equal(net.shortfall, 0);
-  assert.equal(net.stillToPay, 1600, 'remaining plus overdue');
+  assert.equal(net.stillToPay, 1600, 'remaining plus prior-month carry-forward');
   assert.equal(net.leftAfterBillsPaid, 2500);
 });
 
@@ -59,4 +59,15 @@ test('the income card renders on the dashboard, pay period, and bills pages', as
     assert.match(source, /import IncomeExpensesCard from/, `${name} imports the income card`);
     assert.match(source, /<IncomeExpensesCard summary=\{/, `${name} renders the income card`);
   }
+});
+
+test('a current overdue balance is not counted twice in still to pay', () => {
+  // summarizeLedgerBills puts a current overdue bill in both remaining and
+  // overdue; only prior-month carry-forward is additional.
+  const net = calculateMonthlyNet(
+    { totalIncome: 5000 },
+    { total: 2000, remaining: 800, overdue: 500, overdueCarryForward: 200 },
+  );
+
+  assert.equal(net.stillToPay, 1000, '800 remaining + 200 carried forward, not + 500');
 });

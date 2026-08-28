@@ -25,13 +25,19 @@ const toEntry = (row) => ({
   notes: row.notes ?? null,
 });
 
-// A month with no entries table yet (migration not applied) must not break the
-// page -- it falls back to the older monthly-total shape instead.
+// Returns null only when the entries table does not exist yet, which is the one
+// case the legacy fallback is for. Every other failure -- auth, timeout, a
+// malformed response -- propagates, because silently showing legacy-derived
+// income instead of the source of truth would change the figures without
+// saying so.
+const MISSING_TABLE = /PGRST205|could not find the table|does not exist|relation .* does not exist/i;
+
 async function listIncomeEntryRows(month) {
   try {
     return await supabaseRequest(`ledger_income_entries?select=${ENTRY_FIELDS}&month=eq.${month}&order=received_on.asc`);
-  } catch {
-    return null;
+  } catch (error) {
+    if (MISSING_TABLE.test(error.message ?? '')) return null;
+    throw error;
   }
 }
 
@@ -84,7 +90,7 @@ export async function getIncomeBreakdown(selectedMonth) {
   }));
 
   return summarizeIncome({
-    entries: (entryRows ?? []).map(toEntry),
+    entries: entryRows === null ? null : entryRows.map(toEntry),
     postedPayroll: periods.reduce((sum, row) => sum + row.regularIncome, 0),
     recordedMonthlyIncome: number(monthlyRows?.[0]?.income),
     notarySupport: periods.reduce((sum, row) => sum + row.notaryIncome, 0),
@@ -106,25 +112,28 @@ export async function getIncomeBreakdown(selectedMonth) {
 // monthly total, the same money either way, so the larger of the two is used --
 // purely so the pages are not blank in that window.
 export function summarizeIncome({ entries, postedPayroll = 0, recordedMonthlyIncome = 0, notarySupport = 0, periods = [] } = {}) {
-  const rows = entries ?? [];
-  const hasEntries = rows.length > 0;
+  // Whether entries are available, not whether any exist. Deleting the last
+  // entry has to leave the month at zero; falling back on an empty month would
+  // revive the migrated legacy amount as an aggregate with no way to remove it.
+  const usesEntries = Array.isArray(entries);
+  const rows = usesEntries ? entries : [];
   const entryTotal = (kind) => rows
     .filter((entry) => entry.kind === kind)
     .reduce((sum, entry) => sum + number(entry.amount), 0);
 
-  const paychecks = hasEntries
-    ? entryTotal('paycheck') + entryTotal('other')
+  const paychecks = usesEntries
+    ? entryTotal('paycheck')
     : Math.max(number(postedPayroll), number(recordedMonthlyIncome));
-  const notary = hasEntries
-    ? entryTotal('notary')
-    : number(notarySupport);
+  const notary = usesEntries ? entryTotal('notary') : number(notarySupport);
+  const other = usesEntries ? entryTotal('other') : 0;
 
   return {
     paychecks,
     notarySupport: notary,
-    totalIncome: paychecks + notary,
+    otherIncome: other,
+    totalIncome: paychecks + notary + other,
     entries: rows,
-    usesEntries: hasEntries,
+    usesEntries,
     postedPayroll: number(postedPayroll),
     recordedMonthlyIncome: number(recordedMonthlyIncome),
     periods,

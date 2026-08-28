@@ -39,7 +39,7 @@ test('months recorded before itemized paychecks still count each paycheck once',
   global.fetch = async (url) => {
     const value = String(url);
     if (value.includes('ledger_income_entries')) {
-      return new Response(JSON.stringify([]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      return new Response(JSON.stringify({ code: 'PGRST205', message: 'Could not find the table' }), { status: 404, headers: { 'Content-Type': 'application/json' } });
     }
     if (value.includes('ledger_pay_period_finances')) {
       return new Response(JSON.stringify([
@@ -166,9 +166,37 @@ test('income entries are the only source: pay period figures are ignored', () =>
   assert.equal(income.totalIncome, 2992);
 });
 
-test('a month with no entries falls back to the larger of posted payroll and the monthly total', () => {
-  const income = summarizeIncome({ entries: [], postedPayroll: 3337, recordedMonthlyIncome: 5984.15, notarySupport: 1050 });
+test('a month with no entries table falls back to the larger of posted payroll and the monthly total', () => {
+  const income = summarizeIncome({ entries: null, postedPayroll: 3337, recordedMonthlyIncome: 5984.15, notarySupport: 1050 });
 
   assert.equal(income.usesEntries, false);
   assert.equal(income.totalIncome, 7034.15);
+});
+
+test('an empty month stays empty instead of reviving the legacy total', () => {
+  const cleared = summarizeIncome({ entries: [], postedPayroll: 2992, recordedMonthlyIncome: 5984, notarySupport: 1050 });
+
+  assert.equal(cleared.totalIncome, 0, 'removing the last entry clears the month');
+  assert.equal(cleared.usesEntries, true);
+});
+
+test('only an unavailable entries table falls back to legacy figures', () => {
+  const fallback = summarizeIncome({ entries: null, postedPayroll: 2992, recordedMonthlyIncome: 5984, notarySupport: 1050 });
+
+  assert.equal(fallback.usesEntries, false);
+  assert.equal(fallback.totalIncome, 7034);
+});
+
+test('other income keeps its own subtotal and is not reported as paychecks', () => {
+  const income = summarizeIncome({
+    entries: [
+      { id: 'a', amount: 2992, kind: 'paycheck' },
+      { id: 'b', amount: 400, kind: 'other' },
+      { id: 'c', amount: 1050, kind: 'notary' },
+    ],
+  });
+
+  assert.equal(income.paychecks, 2992, 'other income is not folded into paychecks');
+  assert.equal(income.otherIncome, 400);
+  assert.equal(income.totalIncome, 4442, 'but it still counts toward total income');
 });

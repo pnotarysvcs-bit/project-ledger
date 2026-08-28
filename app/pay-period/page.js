@@ -52,12 +52,14 @@ export default async function PayPeriodPage({ searchParams }) {
   // The funding month the paycheck lands in, so the income card matches the
   // period being viewed rather than always showing the current month.
   const fundingMonth = budget?.period?.paycheckDate?.slice(0, 7) ?? null;
-  let billSummary = {};
+  // null, not an empty summary: unavailable bills would otherwise render as a
+  // zero-expense month with the whole income left over.
+  let billSummary = null;
   if (fundingMonth) {
     try {
       billSummary = summarizeLedgerBills(await getLedgerBills({ selectedMonth: fundingMonth }));
     } catch {
-      billSummary = {};
+      billSummary = null;
     }
   }
 

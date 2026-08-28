@@ -75,8 +75,9 @@ export default async function MonthlyIncomeCard({ selectedMonth }) {
           </>
         )}
 
+        {income.usesEntries && income.otherIncome > 0 && <FundingRow label="Other income" amount={income.otherIncome} detail="Income entries recorded as other" />}
         <div className="income-summary">
-          <span><b>Total income</b><small className="muted">Paychecks + notary income</small></span>
+          <span><b>Total income</b><small className="muted">Paychecks + notary + other income</small></span>
           <strong className="green">{money.format(income.totalIncome)}</strong>
         </div>
 

@@ -23,20 +23,11 @@ create index if not exists ledger_income_entries_received_idx on public.ledger_i
 
 alter table public.ledger_income_entries enable row level security;
 
-do $$ begin
-  if not exists (
-    select 1
-    from pg_policies
-    where schemaname = 'public'
-      and tablename = 'ledger_income_entries'
-      and policyname = 'ledger_income_entries_service_read'
-  ) then
-    create policy ledger_income_entries_service_read
-      on public.ledger_income_entries
-      for select
-      using (true);
-  end if;
-end $$;
+-- No policy is created on purpose. The application reads this table with the
+-- service-role key, which bypasses row level security, so a permissive
+-- `using (true)` policy would grant no access the app needs while exposing every
+-- paycheck amount, date and note to the anon and authenticated roles over REST.
+-- RLS enabled with no policy denies those roles instead.
 
 comment on table public.ledger_income_entries is 'One row per received paycheck or other income. Replaces the single running monthly total in ledger_monthly_finances.';
 comment on column public.ledger_income_entries.month is 'First day of the month the income belongs to.';
@@ -46,20 +37,38 @@ comment on column public.ledger_income_entries.source is 'manual = entered on th
 -- Backfill: carry every existing monthly total over as a single migrated entry
 -- so no recorded income is lost. Dated the first of its month because the old
 -- format kept no received-on date. Guarded so re-running changes nothing.
+with payroll as (
+  select month, sum(regular_income) as posted
+  from public.ledger_pay_period_finances
+  group by month
+),
+recorded as (
+  select month, income from public.ledger_monthly_finances
+),
+-- The old calculation treated a posted paycheck and a recorded monthly total as
+-- the same money and took the larger of the two. Carrying over that same
+-- greater-of value keeps every migrated month at the figure it showed before.
+combined as (
+  select
+    coalesce(r.month, p.month) as month,
+    greatest(coalesce(r.income, 0), coalesce(p.posted, 0)) as amount
+  from recorded r
+  full outer join payroll p on p.month = r.month
+)
 insert into public.ledger_income_entries (month, received_on, amount, kind, source, notes)
 select
-  f.month,
-  f.month,
-  f.income,
+  c.month,
+  c.month,
+  c.amount,
   'paycheck',
   'migrated',
-  'Carried over from the previous single monthly income total.'
-from public.ledger_monthly_finances f
-where f.income > 0
+  'Carried over from the previous monthly income total and posted payroll.'
+from combined c
+where c.amount > 0
   and not exists (
     select 1
     from public.ledger_income_entries e
-    where e.month = f.month
+    where e.month = c.month
       and e.source = 'migrated'
       and e.kind = 'paycheck'
   );
