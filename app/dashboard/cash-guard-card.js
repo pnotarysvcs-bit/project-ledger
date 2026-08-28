@@ -41,7 +41,6 @@ export default async function CashGuardCard({ rows = [], selectedMonth = '' }) {
       </div>
       <div className="glance-grid">
         <div className="glance-item green"><small>Bills Reserved</small><strong>{money.format(summary.billsReserved)}</strong><span>{money.format(summary.currentBillsRemaining)} current + {money.format(summary.overdueBillsRemaining)} overdue</span></div>
-        <div className="glance-item blue"><small>Income Received</small><strong>{money.format(summary.fundingReceived)}</strong><span>Paychecks + notary income</span></div>
         <div className="glance-item orange"><small>Variable Essentials Reserve</small><strong>{money.format(summary.variableEssentialsReserve)}</strong><span>Gas, medical, groceries, household</span></div>
         <div className="glance-item purple"><small>Planned One-Offs</small><strong>{money.format(summary.plannedOneOffsReserve)}</strong><span>Gifts, tickets, repairs, annual items</span></div>
         <div className="glance-item green"><small>Monthly Cash Freed</small><strong>{money.format(summary.freedUpCashFlow)}</strong><span>{freedDetail}</span></div>

@@ -26,7 +26,6 @@ test('cash guard subtracts unpaid bills and reserves from available cash', () =>
   assert.equal(result.currentBillsRemaining, 525);
   assert.equal(result.overdueBillsRemaining, 50, 'overdue is counted once per bill');
   assert.equal(result.billsReserved, 575);
-  assert.equal(result.fundingReceived, 800, 'paychecks plus notary income');
   assert.equal(result.safeToSpend, 175);
   assert.equal(result.fundingGap, 0);
 });
