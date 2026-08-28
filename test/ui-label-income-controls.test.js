@@ -15,9 +15,9 @@ test('Bills workspace uses Due Date instead of Next Due in user-facing labels', 
   assert.match(billsPage, /aria-label="Due Date" name="nextDue"/);
 });
 
-test('Monthly Income accepts a new addition without replacing the displayed monthly total', () => {
-  assert.match(incomeCard, />Add other \/ unclassified funding<\/span>/);
-  assert.match(incomeCard, /<button type="submit">Add Funding<\/button>/);
+test('Income accepts a new paycheck without replacing the recorded monthly total', () => {
+  assert.match(incomeCard, />Add a paycheck<\/span>/);
+  assert.match(incomeCard, /<button type="submit">Add Paycheck<\/button>/);
   assert.match(incomeCard, /defaultValue=\{0\}/);
   assert.match(incomeCard, /await addMonthlyIncome\(month, income\)/);
   assert.doesNotMatch(incomeCard, /defaultValue=\{income \?\? 0\}/);

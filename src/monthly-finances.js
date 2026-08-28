@@ -20,7 +20,7 @@ export async function getIncomeBreakdown(selectedMonth) {
     supabaseRequest(`ledger_pay_period_finances?select=period,regular_income,notary_income,ahead_contribution,target_month&month=eq.${month}&order=period.asc`),
   ]);
 
-  const legacyMonthlyIncome = number(monthlyRows?.[0]?.income);
+  const recordedMonthlyIncome = number(monthlyRows?.[0]?.income);
   const periods = (payPeriods ?? []).map((row) => ({
     period: Number(row.period),
     regularIncome: number(row.regular_income),
@@ -28,16 +28,31 @@ export async function getIncomeBreakdown(selectedMonth) {
     aheadContribution: number(row.ahead_contribution),
     targetMonth: row.target_month ?? null,
   }));
-  const payrollIncome = periods.reduce((sum, row) => sum + row.regularIncome, 0);
-  const notarySupport = periods.reduce((sum, row) => sum + row.notaryIncome, 0);
-  const otherFunding = Math.max(0, legacyMonthlyIncome - payrollIncome);
+
+  return summarizeIncome({
+    postedPayroll: periods.reduce((sum, row) => sum + row.regularIncome, 0),
+    recordedMonthlyIncome,
+    notarySupport: periods.reduce((sum, row) => sum + row.notaryIncome, 0),
+    periods,
+  });
+}
+
+// One income figure: paychecks plus notary income, nothing else.
+//
+// Paychecks reach the ledger two ways -- posted per pay period, and recorded
+// as a monthly total on the Income tab. They are the same money, so take the
+// larger of the two rather than adding them; that keeps every paycheck counted
+// exactly once no matter which way it was entered.
+export function summarizeIncome({ postedPayroll = 0, recordedMonthlyIncome = 0, notarySupport = 0, periods = [] } = {}) {
+  const paychecks = Math.max(number(postedPayroll), number(recordedMonthlyIncome));
+  const notary = number(notarySupport);
 
   return {
-    payrollIncome,
-    notarySupport,
-    otherFunding,
-    householdFunding: payrollIncome + notarySupport + otherFunding,
-    legacyMonthlyIncome,
+    paychecks,
+    notarySupport: notary,
+    totalIncome: paychecks + notary,
+    postedPayroll: number(postedPayroll),
+    recordedMonthlyIncome: number(recordedMonthlyIncome),
     periods,
   };
 }

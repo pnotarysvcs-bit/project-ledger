@@ -1,5 +1,6 @@
 import { supabaseRequest } from './supabase-server.js';
 import { normalizeLedgerMonth } from './ledger-bills-data.js';
+import { summarizeIncome } from './monthly-finances.js';
 
 const number = (value) => {
   const parsed = Number(value ?? 0);
@@ -19,11 +20,12 @@ export async function getLatestCashSnapshot() {
 export async function getCashGuardInputs(selectedMonth) {
   const normalized = normalizeLedgerMonth(selectedMonth);
   const month = `${normalized}-01`;
-  const [guardRows, payPeriods, rollovers, sourceBills] = await Promise.all([
+  const [guardRows, payPeriods, rollovers, sourceBills, monthlyRows] = await Promise.all([
     supabaseRequest(`ledger_cash_guard?select=available_cash,variable_essentials_reserve,planned_one_offs_reserve,cash_floor,discretionary_lock_until,cash_as_of,notes&month=eq.${month}`),
     supabaseRequest(`ledger_pay_period_finances?select=period,regular_income,notary_income,ahead_contribution,target_month&month=eq.${month}&order=period.asc`),
     supabaseRequest(`ledger_goal_rollovers?select=source_bill_id,source_name,target_name,monthly_amount,status,closed_month&closed_month=lte.${month}&order=closed_month.asc`),
     supabaseRequest('ledger_bills?select=id,frequency'),
+    supabaseRequest(`ledger_monthly_finances?select=income&month=eq.${month}`),
   ]);
 
   const sourceFrequency = new Map((sourceBills ?? []).map((bill) => [bill.id, String(bill.frequency ?? '').trim().toLowerCase()]));
@@ -48,6 +50,7 @@ export async function getCashGuardInputs(selectedMonth) {
     cashAsOf: guard.cash_as_of ?? null,
     notes: guard.notes ?? null,
     freedCashItems,
+    recordedMonthlyIncome: number(monthlyRows?.[0]?.income),
     payPeriods: (payPeriods ?? []).map((row) => ({
       period: Number(row.period),
       regularIncome: number(row.regular_income),
@@ -68,10 +71,13 @@ export function calculateCashGuard(rows = [], inputs = {}, asOf = new Date()) {
   }
   const overdueBillsRemaining = [...overdueByBill.values()].reduce((sum, value) => sum + value, 0);
   const billsReserved = currentBillsRemaining + overdueBillsRemaining;
-  const fundingReceived = (inputs.payPeriods ?? []).reduce(
-    (sum, period) => sum + number(period.regularIncome) + number(period.notaryIncome),
-    0,
-  );
+  const periods = inputs.payPeriods ?? [];
+  // Same one income figure the Income tab shows: paychecks + notary income.
+  const fundingReceived = summarizeIncome({
+    postedPayroll: periods.reduce((sum, period) => sum + number(period.regularIncome), 0),
+    recordedMonthlyIncome: inputs.recordedMonthlyIncome,
+    notarySupport: periods.reduce((sum, period) => sum + number(period.notaryIncome), 0),
+  }).totalIncome;
   const freedUpCashFlow = (inputs.freedCashItems ?? []).reduce((sum, item) => sum + number(item.monthlyAmount), 0);
   const reserves = number(inputs.variableEssentialsReserve)
     + number(inputs.plannedOneOffsReserve)

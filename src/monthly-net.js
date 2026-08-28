@@ -6,23 +6,22 @@ const number = (value) => {
 // Income minus expenses for a single month, from household funding and the
 // month's bill summary. Pure so it can be tested without Supabase.
 export function calculateMonthlyNet(income = {}, summary = {}) {
-  const householdFunding = number(income.householdFunding);
+  const totalIncome = number(income.totalIncome);
   const expenses = number(summary.total);
   const paid = number(summary.totalPaid);
   const stillToPay = Math.max(0, number(summary.remaining) + number(summary.overdue));
-  const net = householdFunding - expenses;
+  const net = totalIncome - expenses;
 
   return {
-    income: householdFunding,
-    payrollIncome: number(income.payrollIncome),
+    income: totalIncome,
+    paychecks: number(income.paychecks),
     notarySupport: number(income.notarySupport),
-    otherFunding: number(income.otherFunding),
     expenses,
     paid,
     stillToPay,
     net,
     shortfall: Math.max(0, -net),
-    leftAfterBillsPaid: householdFunding - paid,
+    leftAfterBillsPaid: totalIncome - paid,
     covered: net >= 0,
     incompleteCount: Number(summary.incompleteCount ?? 0),
   };

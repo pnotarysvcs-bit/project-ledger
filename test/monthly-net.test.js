@@ -4,7 +4,7 @@ import { readFile } from 'node:fs/promises';
 
 import { calculateMonthlyNet } from '../src/monthly-net.js';
 
-const income = { payrollIncome: 3000, notarySupport: 500, otherFunding: 200, householdFunding: 3700 };
+const income = { paychecks: 3200, notarySupport: 500, totalIncome: 3700 };
 const summary = { total: 2800, totalPaid: 1200, remaining: 1400, overdue: 200, incompleteCount: 0 };
 
 test('net is household income minus monthly expenses', () => {
@@ -20,7 +20,7 @@ test('net is household income minus monthly expenses', () => {
 });
 
 test('net reports a shortfall when bills exceed income', () => {
-  const net = calculateMonthlyNet({ householdFunding: 1500 }, { total: 2800 });
+  const net = calculateMonthlyNet({ totalIncome: 1500 }, { total: 2800 });
 
   assert.equal(net.net, -1300);
   assert.equal(net.covered, false);
@@ -43,6 +43,6 @@ test('dashboard renders the income vs expenses card', async () => {
 
   const card = await readFile(new URL('../app/dashboard/income-expenses-card.js', import.meta.url), 'utf8');
   assert.match(card, /Income minus expenses/);
-  assert.match(card, /Household Income/);
+  assert.match(card, /Paychecks \{money\.format\(net\.paychecks\)\}/);
   assert.match(card, /Monthly Expenses/);
 });

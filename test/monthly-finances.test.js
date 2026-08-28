@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { addMonthlyIncome, getIncomeBreakdown, getMonthlyIncome, saveMonthlyIncome } from '../src/monthly-finances.js';
+import { addMonthlyIncome, getIncomeBreakdown, getMonthlyIncome, saveMonthlyIncome, summarizeIncome } from '../src/monthly-finances.js';
 
 const originalFetch = global.fetch;
 const originalUrl = process.env.SUPABASE_URL;
@@ -34,7 +34,7 @@ test('monthly income is read for the selected month only', { concurrency: false 
   }
 });
 
-test('income breakdown separates payroll, notary support, and other funding without double counting', { concurrency: false }, async () => {
+test('income is paychecks plus notary income, counting a paycheck only once', { concurrency: false }, async () => {
   withSupabaseEnv();
   global.fetch = async (url) => {
     const value = String(url);
@@ -49,10 +49,11 @@ test('income breakdown separates payroll, notary support, and other funding with
 
   try {
     const result = await getIncomeBreakdown('2026-08');
-    assert.equal(result.payrollIncome, 2992.15);
+    // Recorded monthly income (3092.15) covers the posted paycheck (2992.15)
+    // plus 100 entered by hand, so paychecks is the larger of the two, not the sum.
+    assert.equal(result.paychecks, 3092.15);
     assert.equal(result.notarySupport, 1394.78);
-    assert.equal(result.otherFunding, 100);
-    assert.equal(result.householdFunding, 4486.93);
+    assert.equal(result.totalIncome, 4486.93);
   } finally {
     restoreEnv();
   }
@@ -114,4 +115,23 @@ test('monthly income rejects negative values before persistence', { concurrency:
   } finally {
     restoreEnv();
   }
+});
+
+test('a paycheck counts once whether it is posted to a pay period or recorded by hand', () => {
+  const posted = summarizeIncome({ postedPayroll: 5984.15, recordedMonthlyIncome: 0, notarySupport: 1050 });
+  const byHand = summarizeIncome({ postedPayroll: 0, recordedMonthlyIncome: 5984.15, notarySupport: 1050 });
+  const both = summarizeIncome({ postedPayroll: 5984.15, recordedMonthlyIncome: 5984.15, notarySupport: 1050 });
+
+  assert.equal(posted.totalIncome, 7034.15);
+  assert.equal(byHand.totalIncome, 7034.15, 'entering it on the Income tab gives the same total');
+  assert.equal(both.totalIncome, 7034.15, 'recorded in both places is still one paycheck');
+});
+
+test('income is only paychecks and notary income', () => {
+  const income = summarizeIncome({ postedPayroll: 3000, recordedMonthlyIncome: 0, notarySupport: 500 });
+
+  assert.equal(income.paychecks, 3000);
+  assert.equal(income.notarySupport, 500);
+  assert.equal(income.totalIncome, 3500);
+  assert.equal(summarizeIncome({}).totalIncome, 0);
 });
