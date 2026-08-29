@@ -76,8 +76,8 @@ export default async function CashGuardCard({ rows = [], selectedMonth = '' }) {
             <input type="hidden" name="month" value={selectedMonth} />
             <input type="hidden" name="plannedOneOffsReserve" value={summary.plannedOneOffsReserve} />
             <label>AI Estimate<input name="variableEssentialsReserve" type="number" min="0" step="0.01" defaultValue={summary.variableEssentialsReserve} /></label>
-            <span>Spent so far <b>{money.format(0)}</b></span>
-            <span>Remaining protected <b>{money.format(summary.variableEssentialsReserve)}</b></span>
+            <span>Spent so far <b>—</b></span>
+            <span>Remaining protected <b>—</b></span>
             <div><button formAction={recalculateCashGuard}>Recalculate</button><button type="submit">Adjust</button></div>
           </form>
         </article>
