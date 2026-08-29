@@ -4,6 +4,7 @@ import { readFile } from 'node:fs/promises';
 
 const billsPage = await readFile(new URL('../app/page.js', import.meta.url), 'utf8');
 const dashboardPage = await readFile(new URL('../app/dashboard/page.js', import.meta.url), 'utf8');
+const cashGuardCard = await readFile(new URL('../app/dashboard/cash-guard-card.js', import.meta.url), 'utf8');
 const incomePage = await readFile(new URL('../app/income/page.js', import.meta.url), 'utf8');
 const incomeCard = await readFile(new URL('../app/dashboard/monthly-income-card.js', import.meta.url), 'utf8');
 
@@ -28,7 +29,8 @@ test('Income page renders Monthly Income for the selected month', () => {
   assert.match(incomePage, /<MonthlyIncomeCard selectedMonth=\{selectedMonth\} searchParams=\{params\} \/>/);
 });
 
-test('Dashboard renders Monthly Income for the normalized selected month', () => {
-  assert.match(dashboardPage, /import MonthlyIncomeCard from '\.\/monthly-income-card\.js';/);
-  assert.match(dashboardPage, /<MonthlyIncomeCard selectedMonth=\{normalizedMonth\} \/>/);
+test('Dashboard summarizes total income in Cash Guard instead of rendering the Income workspace card', () => {
+  assert.doesNotMatch(dashboardPage, /MonthlyIncomeCard/);
+  assert.match(cashGuardCard, /import \{ getIncomeBreakdown \} from '\.\.\/\.\.\/src\/monthly-finances\.js';/);
+  assert.match(cashGuardCard, /<small>Income<\/small><strong>\{money\.format\(income\.householdFunding\)\}<\/strong>/);
 });
