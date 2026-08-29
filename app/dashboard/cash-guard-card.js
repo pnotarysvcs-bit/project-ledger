@@ -45,8 +45,8 @@ export default async function CashGuardCard({ rows = [], selectedMonth = '' }) {
         <span><small>Available cash snapshot</small><b>{money.format(summary.availableCash)}</b><small>as of {dateLabel(summary.cashAsOf)}</small></span>
       </div>
       <div className="glance-grid">
-        <div className="glance-item green"><small>Bills Reserved</small><strong>{money.format(summary.billsReserved)}</strong><span>{money.format(summary.currentBillsRemaining)} current + {money.format(summary.overdueBillsRemaining)} overdue</span></div>
         <div className="glance-item blue"><small>Income</small><strong>{money.format(income.householdFunding)}</strong><span>Payroll + notary support + other funding</span></div>
+        <div className="glance-item green"><small>Bills Reserved</small><strong>{money.format(summary.billsReserved)}</strong><span>{money.format(summary.currentBillsRemaining)} current + {money.format(summary.overdueBillsRemaining)} overdue</span></div>
         <div className="glance-item orange"><small>Variable Essentials Reserve</small><strong>{money.format(summary.variableEssentialsReserve)}</strong><span>Gas, medical, groceries, household</span></div>
         <div className="glance-item purple"><small>Planned One-Offs</small><strong>{money.format(summary.plannedOneOffsReserve)}</strong><span>Gifts, tickets, repairs, annual items</span></div>
         <div className="glance-item green"><small>Monthly Cash Freed</small><strong>{money.format(summary.freedUpCashFlow)}</strong><span>{freedDetail}</span></div>

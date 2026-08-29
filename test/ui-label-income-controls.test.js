@@ -29,8 +29,9 @@ test('Income page renders Monthly Income for the selected month', () => {
   assert.match(incomePage, /<MonthlyIncomeCard selectedMonth=\{selectedMonth\} searchParams=\{params\} \/>/);
 });
 
-test('Dashboard summarizes total income in Cash Guard instead of rendering the Income workspace card', () => {
+test('Dashboard displays total income as the first Cash Guard card instead of rendering the Income workspace card', () => {
   assert.doesNotMatch(dashboardPage, /MonthlyIncomeCard/);
   assert.match(cashGuardCard, /import \{ getIncomeBreakdown \} from '\.\.\/\.\.\/src\/monthly-finances\.js';/);
   assert.match(cashGuardCard, /<small>Income<\/small><strong>\{money\.format\(income\.householdFunding\)\}<\/strong>/);
+  assert.ok(cashGuardCard.indexOf('<small>Income</small>') < cashGuardCard.indexOf('<small>Bills Reserved</small>'));
 });
