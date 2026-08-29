@@ -13,6 +13,28 @@ export async function getMonthlyIncome(selectedMonth) {
   return Number(rows[0].income);
 }
 
+export function deriveIncomeBreakdown(payPeriods = [], legacyMonthlyIncome = 0) {
+  const periods = (payPeriods ?? []).map((row) => ({
+    period: Number(row.period),
+    regularIncome: number(row.regularIncome ?? row.regular_income),
+    notaryIncome: number(row.notaryIncome ?? row.notary_income),
+    aheadContribution: number(row.aheadContribution ?? row.ahead_contribution),
+    targetMonth: row.targetMonth ?? row.target_month ?? null,
+  }));
+  const payrollIncome = periods.reduce((sum, row) => sum + row.regularIncome, 0);
+  const notarySupport = periods.reduce((sum, row) => sum + row.notaryIncome, 0);
+  const otherFunding = Math.max(0, number(legacyMonthlyIncome) - payrollIncome);
+
+  return {
+    payrollIncome,
+    notarySupport,
+    otherFunding,
+    householdFunding: payrollIncome + notarySupport + otherFunding,
+    legacyMonthlyIncome: number(legacyMonthlyIncome),
+    periods,
+  };
+}
+
 export async function getIncomeBreakdown(selectedMonth) {
   const month = `${normalizeLedgerMonth(selectedMonth)}-01`;
   const [monthlyRows, payPeriods] = await Promise.all([
@@ -20,26 +42,7 @@ export async function getIncomeBreakdown(selectedMonth) {
     supabaseRequest(`ledger_pay_period_finances?select=period,regular_income,notary_income,ahead_contribution,target_month&month=eq.${month}&order=period.asc`),
   ]);
 
-  const legacyMonthlyIncome = number(monthlyRows?.[0]?.income);
-  const periods = (payPeriods ?? []).map((row) => ({
-    period: Number(row.period),
-    regularIncome: number(row.regular_income),
-    notaryIncome: number(row.notary_income),
-    aheadContribution: number(row.ahead_contribution),
-    targetMonth: row.target_month ?? null,
-  }));
-  const payrollIncome = periods.reduce((sum, row) => sum + row.regularIncome, 0);
-  const notarySupport = periods.reduce((sum, row) => sum + row.notaryIncome, 0);
-  const otherFunding = Math.max(0, legacyMonthlyIncome - payrollIncome);
-
-  return {
-    payrollIncome,
-    notarySupport,
-    otherFunding,
-    householdFunding: payrollIncome + notarySupport + otherFunding,
-    legacyMonthlyIncome,
-    periods,
-  };
+  return deriveIncomeBreakdown(payPeriods, number(monthlyRows?.[0]?.income));
 }
 
 export async function getPayPeriodIncome(selectedMonth, period) {

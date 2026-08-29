@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { addMonthlyIncome, getIncomeBreakdown, getMonthlyIncome, saveMonthlyIncome } from '../src/monthly-finances.js';
+import { addMonthlyIncome, deriveIncomeBreakdown, getIncomeBreakdown, getMonthlyIncome, saveMonthlyIncome } from '../src/monthly-finances.js';
 
 const originalFetch = global.fetch;
 const originalUrl = process.env.SUPABASE_URL;
@@ -56,6 +56,19 @@ test('income breakdown separates payroll, notary support, and other funding with
   } finally {
     restoreEnv();
   }
+});
+
+test('deriveIncomeBreakdown reuses already-fetched pay periods without an extra request', () => {
+  const payPeriods = [
+    { period: 1, regularIncome: 2992.15, notaryIncome: 1394.78, aheadContribution: 0, targetMonth: '2026-08-01' },
+    { period: 2, regularIncome: 0, notaryIncome: 0, aheadContribution: 0, targetMonth: '2026-08-01' },
+  ];
+
+  const result = deriveIncomeBreakdown(payPeriods, 5100);
+  assert.equal(result.payrollIncome, 2992.15);
+  assert.equal(result.notarySupport, 1394.78);
+  assert.equal(result.otherFunding, 2107.85);
+  assert.ok(Math.abs(result.householdFunding - 6494.78) < 0.001);
 });
 
 test('monthly income upserts without changing bill or payment data', { concurrency: false }, async () => {

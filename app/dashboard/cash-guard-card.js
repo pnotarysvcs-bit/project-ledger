@@ -1,5 +1,5 @@
 import { calculateCashGuard, getCashGuardInputs } from '../../src/cash-guard.js';
-import { getIncomeBreakdown } from '../../src/monthly-finances.js';
+import { deriveIncomeBreakdown, getMonthlyIncome } from '../../src/monthly-finances.js';
 
 const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
 const shortDate = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -15,10 +15,12 @@ export default async function CashGuardCard({ rows = [], selectedMonth = '' }) {
   let error = null;
   let income = null;
   try {
-    [inputs, income] = await Promise.all([
+    let legacyMonthlyIncome;
+    [inputs, legacyMonthlyIncome] = await Promise.all([
       getCashGuardInputs(selectedMonth),
-      getIncomeBreakdown(selectedMonth),
+      getMonthlyIncome(selectedMonth),
     ]);
+    income = deriveIncomeBreakdown(inputs.payPeriods, legacyMonthlyIncome);
   } catch (caught) {
     error = caught.message;
   }
