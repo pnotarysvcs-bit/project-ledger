@@ -16,8 +16,8 @@ test('Bills workspace uses Due Date instead of Next Due in user-facing labels', 
 });
 
 test('Monthly Income accepts a new addition without replacing the displayed monthly total', () => {
-  assert.match(incomeCard, />Add income amount<\/span>/);
-  assert.match(incomeCard, /<button type="submit">Add Income<\/button>/);
+  assert.match(incomeCard, />Add other \/ unclassified funding<\/span>/);
+  assert.match(incomeCard, /<button type="submit">Add Funding<\/button>/);
   assert.match(incomeCard, /defaultValue=\{0\}/);
   assert.match(incomeCard, /await addMonthlyIncome\(month, income\)/);
   assert.doesNotMatch(incomeCard, /defaultValue=\{income \?\? 0\}/);
