@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 const billsPage = await readFile(new URL('../app/page.js', import.meta.url), 'utf8');
+const dashboardPage = await readFile(new URL('../app/dashboard/page.js', import.meta.url), 'utf8');
 const incomePage = await readFile(new URL('../app/income/page.js', import.meta.url), 'utf8');
 const incomeCard = await readFile(new URL('../app/dashboard/monthly-income-card.js', import.meta.url), 'utf8');
 
@@ -25,4 +26,9 @@ test('Monthly Income accepts a new addition without replacing the displayed mont
 
 test('Income page renders Monthly Income for the selected month', () => {
   assert.match(incomePage, /<MonthlyIncomeCard selectedMonth=\{selectedMonth\} searchParams=\{params\} \/>/);
+});
+
+test('Dashboard renders Monthly Income for the normalized selected month', () => {
+  assert.match(dashboardPage, /import MonthlyIncomeCard from '\.\/monthly-income-card\.js';/);
+  assert.match(dashboardPage, /<MonthlyIncomeCard selectedMonth=\{normalizedMonth\} \/>/);
 });

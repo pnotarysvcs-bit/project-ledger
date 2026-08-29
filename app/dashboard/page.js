@@ -2,6 +2,7 @@ import { getLedgerBills, normalizeLedgerMonth } from '../../src/ledger-bills-dat
 import { resolveDashboardMonth } from '../../src/dashboard-months.js';
 import CashGuardCard from './cash-guard-card.js';
 import GoalsCard from './goals-card.js';
+import MonthlyIncomeCard from './monthly-income-card.js';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,6 +44,7 @@ export default async function DashboardPage({ searchParams }) {
         </header>
         {loadError && <p className="alert" role="alert">Dashboard bills could not be loaded: {loadError}</p>}
         <CashGuardCard rows={rows} selectedMonth={normalizedMonth} />
+        <MonthlyIncomeCard selectedMonth={normalizedMonth} />
         <GoalsCard rows={rows} activity={activity} selectedMonth={normalizedMonth} />
       </main>
     </div>
