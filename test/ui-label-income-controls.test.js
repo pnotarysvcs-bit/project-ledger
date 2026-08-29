@@ -41,7 +41,7 @@ test('Dashboard displays total income as the first Cash Guard card instead of re
 test('Cash Guard uses the approved six-card layout without Safe to Spend or account controls', () => {
   assert.doesNotMatch(cashGuardCard, /rolling-cash-card|Safe to Spend|View Accounts/);
   for (const label of ['1. Income', '2. Expenses', '3. Variable Essentials Reserve', '4. Planned One-Offs', '5. Available Cash', '6. Build Emergency Fund']) {
-    assert.match(cashGuardCard, new RegExp(`<h2>${label}</h2>`));
+    assert.ok(cashGuardCard.includes('<h2>' + label + '</h2>'));
   }
   assert.match(cashGuardCard, /Reserved \/ Current/);
   assert.match(cashGuardCard, /Overdue/);
