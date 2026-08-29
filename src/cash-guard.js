@@ -58,6 +58,23 @@ export async function getCashGuardInputs(selectedMonth) {
   };
 }
 
+export async function saveCashGuardReserves(selectedMonth, { variableEssentialsReserve, plannedOneOffsReserve }) {
+  const month = `${normalizeLedgerMonth(selectedMonth)}-01`;
+  const variable = number(variableEssentialsReserve);
+  const planned = number(plannedOneOffsReserve);
+  if (variable < 0 || planned < 0) throw new Error('Reserve amounts must be zero or greater.');
+
+  await supabaseRequest('ledger_cash_guard?on_conflict=month', {
+    method: 'POST',
+    headers: { Prefer: 'resolution=merge-duplicates' },
+    body: {
+      month,
+      variable_essentials_reserve: variable,
+      planned_one_offs_reserve: planned,
+    },
+  });
+}
+
 export function calculateCashGuard(rows = [], inputs = {}, asOf = new Date()) {
   const currentBillsRemaining = rows.reduce((sum, row) => sum + Math.max(0, number(row.remaining)), 0);
   const overdueByBill = new Map();

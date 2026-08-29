@@ -33,6 +33,21 @@ test('Dashboard displays total income as the first Cash Guard card instead of re
   assert.doesNotMatch(dashboardPage, /MonthlyIncomeCard/);
   assert.match(cashGuardCard, /import\s+\{[^}]*\bderiveIncomeBreakdown\b[^}]*\}\s+from\s+['"]\.\.\/\.\.\/src\/monthly-finances\.js['"];?/);
   assert.doesNotMatch(cashGuardCard, /getIncomeBreakdown/);
-  assert.match(cashGuardCard, /<small>Income<\/small><strong>\{money\.format\(income\.householdFunding\)\}<\/strong>/);
-  assert.ok(cashGuardCard.indexOf('<small>Income</small>') < cashGuardCard.indexOf('<small>Bills Reserved</small>'));
+  assert.match(cashGuardCard, /<h2>1\. Income<\/h2>/);
+  assert.match(cashGuardCard, /<strong>\{money\.format\(income\.householdFunding\)\}<\/strong>/);
+  assert.ok(cashGuardCard.indexOf('<h2>1. Income</h2>') < cashGuardCard.indexOf('<h2>2. Expenses</h2>'));
+});
+
+test('Cash Guard uses the approved six-card layout without Safe to Spend or account controls', () => {
+  assert.doesNotMatch(cashGuardCard, /rolling-cash-card|Safe to Spend|View Accounts/);
+  for (const label of ['1. Income', '2. Expenses', '3. Variable Essentials Reserve', '4. Planned One-Offs', '5. Available Cash', '6. Build Emergency Fund']) {
+    assert.match(cashGuardCard, new RegExp(`<h2>${label}</h2>`));
+  }
+  assert.match(cashGuardCard, /Reserved \/ Current/);
+  assert.match(cashGuardCard, /Overdue/);
+  assert.match(cashGuardCard, /AI Estimate/);
+  assert.match(cashGuardCard, /Recalculate/);
+  assert.match(cashGuardCard, /Remaining protected/);
+  assert.match(cashGuardCard, /Residual cash after protected obligations/);
+  assert.match(cashGuardCard, /saveCashGuardReserves/);
 });
