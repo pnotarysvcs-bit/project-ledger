@@ -60,9 +60,9 @@ export async function getCashGuardInputs(selectedMonth) {
 
 export async function saveCashGuardReserves(selectedMonth, { variableEssentialsReserve, plannedOneOffsReserve }) {
   const month = `${normalizeLedgerMonth(selectedMonth)}-01`;
-  const variable = number(variableEssentialsReserve);
-  const planned = number(plannedOneOffsReserve);
-  if (variable < 0 || planned < 0) throw new Error('Reserve amounts must be zero or greater.');
+  const variable = Number(variableEssentialsReserve);
+  const planned = Number(plannedOneOffsReserve);
+  if (!Number.isFinite(variable) || !Number.isFinite(planned) || variable < 0 || planned < 0) throw new Error('Reserve amounts must be zero or greater.');
 
   await supabaseRequest('ledger_cash_guard?on_conflict=month', {
     method: 'POST',
