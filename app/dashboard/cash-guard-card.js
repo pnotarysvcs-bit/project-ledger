@@ -1,4 +1,5 @@
 import { calculateCashGuard, getCashGuardInputs } from '../../src/cash-guard.js';
+import { deriveIncomeBreakdown, getMonthlyIncome } from '../../src/monthly-finances.js';
 
 const money = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
 const shortDate = new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -12,8 +13,14 @@ function dateLabel(value) {
 export default async function CashGuardCard({ rows = [], selectedMonth = '' }) {
   let inputs = null;
   let error = null;
+  let income = null;
   try {
-    inputs = await getCashGuardInputs(selectedMonth);
+    let legacyMonthlyIncome;
+    [inputs, legacyMonthlyIncome] = await Promise.all([
+      getCashGuardInputs(selectedMonth),
+      getMonthlyIncome(selectedMonth),
+    ]);
+    income = deriveIncomeBreakdown(inputs.payPeriods, legacyMonthlyIncome);
   } catch (caught) {
     error = caught.message;
   }
@@ -40,8 +47,8 @@ export default async function CashGuardCard({ rows = [], selectedMonth = '' }) {
         <span><small>Available cash snapshot</small><b>{money.format(summary.availableCash)}</b><small>as of {dateLabel(summary.cashAsOf)}</small></span>
       </div>
       <div className="glance-grid">
+        <div className="glance-item blue"><small>Income</small><strong>{money.format(income.householdFunding)}</strong><span>Payroll + notary support + other funding</span></div>
         <div className="glance-item green"><small>Bills Reserved</small><strong>{money.format(summary.billsReserved)}</strong><span>{money.format(summary.currentBillsRemaining)} current + {money.format(summary.overdueBillsRemaining)} overdue</span></div>
-        <div className="glance-item blue"><small>Household Funding Received</small><strong>{money.format(summary.fundingReceived)}</strong><span>Payroll + approved notary support</span></div>
         <div className="glance-item orange"><small>Variable Essentials Reserve</small><strong>{money.format(summary.variableEssentialsReserve)}</strong><span>Gas, medical, groceries, household</span></div>
         <div className="glance-item purple"><small>Planned One-Offs</small><strong>{money.format(summary.plannedOneOffsReserve)}</strong><span>Gifts, tickets, repairs, annual items</span></div>
         <div className="glance-item green"><small>Monthly Cash Freed</small><strong>{money.format(summary.freedUpCashFlow)}</strong><span>{freedDetail}</span></div>
