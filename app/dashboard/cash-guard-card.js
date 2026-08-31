@@ -107,28 +107,28 @@ export default async function CashGuardCard({ rows = [], selectedMonth = '' }) {
         </article>
         <article className="cash-guard-item orange">
           <span className="cash-guard-icon" aria-hidden="true">🛒</span>
-          <div><h2>3. Variable Essentials Reserve</h2><p>Gas, groceries, medical, household.</p><small>{summary.variableEssentialsSource === 'manual' ? 'Manual override' : 'AI estimate'}</small></div>
+          <div><h2>3. Variable Essentials Reserve</h2><p>Gas, groceries, medical, household.</p><small>{summary.variableEssentialsSource === 'manual' ? 'Manual override' : 'System estimate (not AI-backed)'}</small></div>
           <strong>{money.format(summary.variableEssentialsReserve)}</strong>
           <div className="cash-guard-detail reserve-editor">
             <form action={recalculateCashGuard}>
               <input type="hidden" name="month" value={selectedMonth} />
               <input type="hidden" name="payPeriods" value={payPeriodsJson} />
               <span>Spent so far <b>—</b></span>
-              <span>Remaining protected <b>{money.format(summary.variableEssentialsReserve)}</b></span>
+              <span>Remaining protected <b>—</b></span>
               <div><button type="submit">Recalculate</button></div>
             </form>
             <form action={adjustVariableEssentials}>
               <input type="hidden" name="month" value={selectedMonth} />
               <input type="hidden" name="plannedOneOffsReserve" value={summary.plannedOneOffsReserve} />
               <input type="hidden" name="plannedOneOffsSource" value={summary.plannedOneOffsSource} />
-              <label>AI Estimate<input name="variableEssentialsReserve" type="number" min="0" step="0.01" defaultValue={summary.variableEssentialsReserve} /></label>
+              <label>System Estimate<input name="variableEssentialsReserve" type="number" min="0" step="0.01" defaultValue={summary.variableEssentialsReserve} /></label>
               <div><button type="submit">Adjust</button></div>
             </form>
           </div>
         </article>
         <article className="cash-guard-item purple">
           <span className="cash-guard-icon" aria-hidden="true">🎁</span>
-          <div><h2>4. Planned One-Offs</h2><p>Annual items, gifts, repairs, special expenses.</p><small>{summary.plannedOneOffsSource === 'manual' ? 'Manual override' : 'AI estimate'}</small></div>
+          <div><h2>4. Planned One-Offs</h2><p>Annual items, gifts, repairs, special expenses.</p><small>{summary.plannedOneOffsSource === 'manual' ? 'Manual override' : 'System estimate (not AI-backed)'}</small></div>
           <strong>{money.format(summary.plannedOneOffsReserve)}</strong>
           <form action={adjustPlannedOneOffs} className="cash-guard-detail reserve-editor">
             <input type="hidden" name="month" value={selectedMonth} />

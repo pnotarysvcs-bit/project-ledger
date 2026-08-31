@@ -82,11 +82,13 @@ export async function saveCashGuardReserves(selectedMonth, { variableEssentialsR
   });
 }
 
-// Deterministic placeholder for the "Recalculate" action. This does not call any external AI
-// provider (none is configured in this codebase) — it derives a same-analysis estimate for both
-// Variable Essentials Reserve and Planned One-Offs Reserve from the household's income received
-// this month, so Recalculate always updates both reserves together from a single pass.
-// Replace with a real analysis call once an AI provider/API key is approved and configured.
+// Deterministic system estimate used by the "Recalculate" action. This is NOT an AI/ChatGPT
+// call and must never be labeled as such in the UI — no LLM provider or paid API is configured
+// or should be introduced here without an explicit decision to add that billing/integration.
+// It derives a same-formula estimate for both Variable Essentials Reserve and Planned One-Offs
+// Reserve from the household's income received this month, so Recalculate always updates both
+// reserves together from a single pass. This may be replaced by a real intelligence layer later,
+// once that decision and any required provider/API key are explicitly approved.
 export function estimateReserveRecalculation(inputs = {}) {
   const fundingReceived = (inputs.payPeriods ?? []).reduce(
     (sum, period) => sum + number(period.regularIncome) + number(period.notaryIncome),

@@ -17,9 +17,16 @@ test('Cash Guard renders exactly five cards in the approved order', () => {
   assert.doesNotMatch(cashGuardCard, /View Accounts/);
 });
 
-test('Cash Guard shows AI estimate vs manual override provenance for both reserves', () => {
-  assert.match(cashGuardCard, /summary\.variableEssentialsSource === 'manual' \? 'Manual override' : 'AI estimate'/);
-  assert.match(cashGuardCard, /summary\.plannedOneOffsSource === 'manual' \? 'Manual override' : 'AI estimate'/);
+test('Cash Guard shows source provenance for both reserves without claiming AI/ChatGPT-backing', () => {
+  assert.match(cashGuardCard, /summary\.variableEssentialsSource === 'manual' \? 'Manual override' : 'System estimate \(not AI-backed\)'/);
+  assert.match(cashGuardCard, /summary\.plannedOneOffsSource === 'manual' \? 'Manual override' : 'System estimate \(not AI-backed\)'/);
+  assert.doesNotMatch(cashGuardCard, /\bAI estimate\b/i);
+  assert.doesNotMatch(cashGuardCard, /ChatGPT/i);
+});
+
+test('Cash Guard does not invent Spent so far or Remaining protected values', () => {
+  assert.match(cashGuardCard, /Spent so far <b>—<\/b>/);
+  assert.match(cashGuardCard, /Remaining protected <b>—<\/b>/);
 });
 
 test('Cash Guard wires Recalculate and Adjust actions to the reserve-saving helpers', () => {
