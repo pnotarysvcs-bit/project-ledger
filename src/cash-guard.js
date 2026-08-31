@@ -20,7 +20,7 @@ export async function getCashGuardInputs(selectedMonth) {
   const normalized = normalizeLedgerMonth(selectedMonth);
   const month = `${normalized}-01`;
   const [guardRows, payPeriods, rollovers, sourceBills] = await Promise.all([
-    supabaseRequest(`ledger_cash_guard?select=available_cash,variable_essentials_reserve,planned_one_offs_reserve,cash_floor,discretionary_lock_until,cash_as_of,notes&month=eq.${month}`),
+    supabaseRequest(`ledger_cash_guard?select=available_cash,variable_essentials_reserve,variable_essentials_source,planned_one_offs_reserve,planned_one_offs_source,cash_floor,discretionary_lock_until,cash_as_of,notes&month=eq.${month}`),
     supabaseRequest(`ledger_pay_period_finances?select=period,regular_income,notary_income,ahead_contribution,target_month&month=eq.${month}&order=period.asc`),
     supabaseRequest(`ledger_goal_rollovers?select=source_bill_id,source_name,target_name,monthly_amount,status,closed_month&closed_month=lte.${month}&order=closed_month.asc`),
     supabaseRequest('ledger_bills?select=id,frequency'),
@@ -42,7 +42,9 @@ export async function getCashGuardInputs(selectedMonth) {
   return {
     availableCash: number(guard.available_cash),
     variableEssentialsReserve: number(guard.variable_essentials_reserve),
+    variableEssentialsSource: guard.variable_essentials_source === 'manual' ? 'manual' : 'estimate',
     plannedOneOffsReserve: number(guard.planned_one_offs_reserve),
+    plannedOneOffsSource: guard.planned_one_offs_source === 'manual' ? 'manual' : 'estimate',
     cashFloor: number(guard.cash_floor),
     discretionaryLockUntil: guard.discretionary_lock_until ?? null,
     cashAsOf: guard.cash_as_of ?? null,
@@ -55,6 +57,44 @@ export async function getCashGuardInputs(selectedMonth) {
       aheadContribution: number(row.ahead_contribution),
       targetMonth: row.target_month ?? null,
     })),
+  };
+}
+
+export async function saveCashGuardReserves(selectedMonth, { variableEssentialsReserve, plannedOneOffsReserve, variableEssentialsSource = 'manual', plannedOneOffsSource = 'manual' }) {
+  const month = `${normalizeLedgerMonth(selectedMonth)}-01`;
+  const variable = Number(variableEssentialsReserve);
+  const planned = Number(plannedOneOffsReserve);
+  if (!Number.isFinite(variable) || !Number.isFinite(planned) || variable < 0 || planned < 0) throw new Error('Reserve amounts must be zero or greater.');
+  if (!['estimate', 'manual'].includes(variableEssentialsSource) || !['estimate', 'manual'].includes(plannedOneOffsSource)) {
+    throw new Error('Reserve source must be "estimate" or "manual".');
+  }
+
+  await supabaseRequest('ledger_cash_guard?on_conflict=month', {
+    method: 'POST',
+    headers: { Prefer: 'resolution=merge-duplicates' },
+    body: {
+      month,
+      variable_essentials_reserve: variable,
+      variable_essentials_source: variableEssentialsSource,
+      planned_one_offs_reserve: planned,
+      planned_one_offs_source: plannedOneOffsSource,
+    },
+  });
+}
+
+// Deterministic placeholder for the "Recalculate" action. This does not call any external AI
+// provider (none is configured in this codebase) — it derives a same-analysis estimate for both
+// Variable Essentials Reserve and Planned One-Offs Reserve from the household's income received
+// this month, so Recalculate always updates both reserves together from a single pass.
+// Replace with a real analysis call once an AI provider/API key is approved and configured.
+export function estimateReserveRecalculation(inputs = {}) {
+  const fundingReceived = (inputs.payPeriods ?? []).reduce(
+    (sum, period) => sum + number(period.regularIncome) + number(period.notaryIncome),
+    0,
+  );
+  return {
+    variableEssentialsReserve: Math.round(fundingReceived * 0.15 * 100) / 100,
+    plannedOneOffsReserve: Math.round(fundingReceived * 0.05 * 100) / 100,
   };
 }
 
@@ -89,7 +129,9 @@ export function calculateCashGuard(rows = [], inputs = {}, asOf = new Date()) {
     currentBillsRemaining,
     overdueBillsRemaining,
     variableEssentialsReserve: number(inputs.variableEssentialsReserve),
+    variableEssentialsSource: inputs.variableEssentialsSource === 'manual' ? 'manual' : 'estimate',
     plannedOneOffsReserve: number(inputs.plannedOneOffsReserve),
+    plannedOneOffsSource: inputs.plannedOneOffsSource === 'manual' ? 'manual' : 'estimate',
     cashFloor: number(inputs.cashFloor),
     rawSafeToSpend,
     safeToSpend: locked ? 0 : Math.max(0, rawSafeToSpend),

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { calculateCashGuard } from '../src/cash-guard.js';
+import { calculateCashGuard, estimateReserveRecalculation } from '../src/cash-guard.js';
 
 const rows = [
   { id: 'rent', remaining: 400, overdueOutstanding: 0 },
@@ -49,4 +49,31 @@ test('cash guard reports a funding gap when bills exceed available cash', () => 
 
   assert.equal(result.safeToSpend, 0);
   assert.equal(result.fundingGap, 525);
+});
+
+test('calculateCashGuard passes through reserve sources without altering financial totals', () => {
+  const defaulted = calculateCashGuard(rows, inputs, new Date('2026-08-29T12:00:00Z'));
+  assert.equal(defaulted.variableEssentialsSource, 'estimate');
+  assert.equal(defaulted.plannedOneOffsSource, 'estimate');
+
+  const manual = calculateCashGuard(rows, {
+    ...inputs,
+    variableEssentialsSource: 'manual',
+    plannedOneOffsSource: 'manual',
+  }, new Date('2026-08-29T12:00:00Z'));
+  assert.equal(manual.variableEssentialsSource, 'manual');
+  assert.equal(manual.plannedOneOffsSource, 'manual');
+  assert.equal(manual.safeToSpend, defaulted.safeToSpend, 'source tagging must not change the calculated amounts');
+});
+
+test('estimateReserveRecalculation derives a deterministic estimate from income received', () => {
+  const estimate = estimateReserveRecalculation({ payPeriods: inputs.payPeriods });
+  assert.equal(estimate.variableEssentialsReserve, 120);
+  assert.equal(estimate.plannedOneOffsReserve, 40);
+});
+
+test('estimateReserveRecalculation tolerates missing pay periods', () => {
+  const estimate = estimateReserveRecalculation({});
+  assert.equal(estimate.variableEssentialsReserve, 0);
+  assert.equal(estimate.plannedOneOffsReserve, 0);
 });
