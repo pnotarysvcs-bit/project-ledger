@@ -89,15 +89,39 @@ export default async function CashGuardCard({ rows = [], selectedMonth = '' }) {
     : 'Open';
   const payPeriodsJson = JSON.stringify(inputs.payPeriods ?? []);
 
+  const safeToSpendGaugePercent = summary.availableCash > 0
+    ? Math.max(0, Math.min(100, Math.round((summary.safeToSpend / summary.availableCash) * 100)))
+    : 0;
+
   return (
     <section className="cash-guard" aria-label="Cash Guard">
       <header><strong>Cash Guard</strong><span className={summary.locked ? 'goal-live' : 'muted'}>{lockLabel}</span></header>
+      <div className="cash-guard-banner">
+        <div className="cash-guard-banner-item safe-to-spend">
+          <span className="cash-guard-banner-icon" aria-hidden="true">◎</span>
+          <div>
+            <small>Safe to Spend</small>
+            <strong>{money.format(summary.safeToSpend)}</strong>
+          </div>
+        </div>
+        <span className="cash-guard-banner-divider" aria-hidden="true" />
+        <div className="cash-guard-banner-item available-cash">
+          <div>
+            <small>Available cash snapshot</small>
+            <strong>{money.format(summary.availableCash)}</strong>
+            <small>as of {dateLabel(summary.cashAsOf)}</small>
+          </div>
+        </div>
+      </div>
       <div className="cash-guard-grid">
         <article className="cash-guard-item blue">
           <span className="cash-guard-icon" aria-hidden="true">👛</span>
           <div><h2>1. Income</h2><p>Money received this period.</p><small>Payroll · Notary support · Other funding</small></div>
-          <strong>{money.format(income.householdFunding)}</strong>
-          <span className="cash-guard-detail">This month<br />{income.periods.length} deposit{income.periods.length === 1 ? '' : 's'}</span>
+          <div className="cash-guard-lower">
+            <strong>{money.format(income.householdFunding)}</strong>
+            <span className="cash-guard-lower-divider" aria-hidden="true" />
+            <span className="cash-guard-detail">This month<br />{income.periods.length} deposit{income.periods.length === 1 ? '' : 's'}</span>
+          </div>
         </article>
         <article className="cash-guard-item green">
           <span className="cash-guard-icon" aria-hidden="true">🧾</span>
@@ -139,11 +163,33 @@ export default async function CashGuardCard({ rows = [], selectedMonth = '' }) {
             <button type="submit">Adjust</button>
           </form>
         </article>
-        <article className="cash-guard-item teal surplus-allocation">
+      </div>
+      <div className="cash-guard-summary-grid">
+        <article className="cash-guard-item blue summary">
+          <span className="cash-guard-icon" aria-hidden="true">🏦</span>
+          <div><h2>Available Cash</h2><p>Total cash on hand across connected accounts.</p></div>
+          <div className="cash-guard-lower">
+            <strong>{money.format(summary.availableCash)}</strong>
+            <span className="cash-guard-lower-divider" aria-hidden="true" />
+            <div className="cash-guard-detail cash-guard-summary-side">
+              <span>As of {dateLabel(summary.cashAsOf)}</span>
+              <a className="cash-guard-summary-button" href="/accounts">View Accounts</a>
+            </div>
+          </div>
+        </article>
+        <article className="cash-guard-item teal summary">
           <span className="cash-guard-icon" aria-hidden="true">🛡️</span>
-          <div><h2>5. Build Emergency Fund</h2><p>{summary.safeToSpend > 0 ? 'Positive available cash rolls into your active reserve goal.' : 'Protect obligations before allocating a surplus.'}</p><small>Available cash snapshot as of {dateLabel(summary.cashAsOf)}</small></div>
-          <strong>{money.format(summary.safeToSpend > 0 ? summary.safeToSpend : 0)}</strong>
-          <span className="cash-guard-detail">Cash snapshot <b>{money.format(summary.availableCash)}</b><br />{summary.safeToSpend > 0 ? '→ Emergency Fund' : 'No surplus available'}</span>
+          <div><h2>Safe to Spend</h2><p>{summary.locked ? lockLabel : 'Cash left after bills, reserves, and the protected floor.'}</p></div>
+          <div className="cash-guard-lower">
+            <strong>{money.format(summary.safeToSpend)}</strong>
+            <span className="cash-guard-lower-divider" aria-hidden="true" />
+            <div className="cash-guard-detail cash-guard-summary-side">
+              <span>{safeToSpendGaugePercent}% of available cash</span>
+              <span className="cash-guard-gauge" role="presentation">
+                <span className="cash-guard-gauge-fill" style={{ width: `${safeToSpendGaugePercent}%` }} />
+              </span>
+            </div>
+          </div>
         </article>
       </div>
     </section>
