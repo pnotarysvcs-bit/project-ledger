@@ -33,6 +33,6 @@ test('Dashboard displays total income as the first Cash Guard card instead of re
   assert.doesNotMatch(dashboardPage, /MonthlyIncomeCard/);
   assert.match(cashGuardCard, /import\s+\{[^}]*\bderiveIncomeBreakdown\b[^}]*\}\s+from\s+['"]\.\.\/\.\.\/src\/monthly-finances\.js['"];?/);
   assert.doesNotMatch(cashGuardCard, /getIncomeBreakdown/);
-  assert.match(cashGuardCard, /<small>Income<\/small><strong>\{money\.format\(income\.householdFunding\)\}<\/strong>/);
-  assert.ok(cashGuardCard.indexOf('<small>Income</small>') < cashGuardCard.indexOf('<small>Bills Reserved</small>'));
+  assert.match(cashGuardCard, /<h2>1\. Income<\/h2>[\s\S]*?<strong>\{money\.format\(income\.householdFunding\)\}<\/strong>/);
+  assert.ok(cashGuardCard.indexOf('1. Income') < cashGuardCard.indexOf('2. Expenses'));
 });
