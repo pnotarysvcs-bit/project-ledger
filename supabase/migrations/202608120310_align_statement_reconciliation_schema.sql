@@ -9,17 +9,33 @@ alter table public.ledger_statement_imports add column if not exists override_mo
 alter table public.ledger_statement_imports add column if not exists effective_month date;
 alter table public.ledger_statement_imports add column if not exists warning_confirmed boolean not null default false;
 
-update public.ledger_statement_imports
-set source_name = coalesce(source_name, file_name),
-    source_hash = coalesce(source_hash, statement_hash),
-    period_start = coalesce(period_start, detected_period_start),
-    period_end = coalesce(period_end, detected_period_end),
-    effective_month = coalesce(effective_month, confirmed_month, detected_month, date_trunc('month', created_at)::date)
-where source_name is null
-   or source_hash is null
-   or period_start is null
-   or period_end is null
-   or effective_month is null;
+-- Legacy column backfill only applies to databases that predate this migration tracking
+-- (i.e. still have the pre-Issue-42 file_name/statement_hash/etc. columns). A fresh database
+-- built purely by replaying these migrations never has those legacy columns, so this must be
+-- guarded — referencing them unconditionally breaks fresh installs (e.g. preview branches).
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'ledger_statement_imports' and column_name = 'file_name'
+  ) then
+    update public.ledger_statement_imports
+    set source_name = coalesce(source_name, file_name),
+        source_hash = coalesce(source_hash, statement_hash),
+        period_start = coalesce(period_start, detected_period_start),
+        period_end = coalesce(period_end, detected_period_end),
+        effective_month = coalesce(effective_month, confirmed_month, detected_month, date_trunc('month', created_at)::date)
+    where source_name is null
+       or source_hash is null
+       or period_start is null
+       or period_end is null
+       or effective_month is null;
+  else
+    update public.ledger_statement_imports
+    set effective_month = coalesce(effective_month, detected_month, date_trunc('month', created_at)::date)
+    where effective_month is null;
+  end if;
+end $$;
 
 alter table public.ledger_statement_imports alter column source_name set not null;
 alter table public.ledger_statement_imports alter column source_hash set not null;
@@ -33,15 +49,23 @@ alter table public.ledger_statement_transactions add column if not exists confid
 alter table public.ledger_statement_transactions add column if not exists decision_note text;
 alter table public.ledger_statement_transactions add column if not exists resolved_at timestamptz;
 
-update public.ledger_statement_transactions
-set source_identity = coalesce(source_identity, transaction_key),
-    bill_id = coalesce(bill_id, matched_bill_id),
-    occurrence_id = coalesce(occurrence_id, matched_occurrence_id),
-    decision_note = coalesce(decision_note, decision)
-where source_identity is null
-   or bill_id is null
-   or occurrence_id is null
-   or decision_note is null;
+do $$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'ledger_statement_transactions' and column_name = 'transaction_key'
+  ) then
+    update public.ledger_statement_transactions
+    set source_identity = coalesce(source_identity, transaction_key),
+        bill_id = coalesce(bill_id, matched_bill_id),
+        occurrence_id = coalesce(occurrence_id, matched_occurrence_id),
+        decision_note = coalesce(decision_note, decision)
+    where source_identity is null
+       or bill_id is null
+       or occurrence_id is null
+       or decision_note is null;
+  end if;
+end $$;
 
 alter table public.ledger_statement_transactions alter column source_identity set not null;
 create unique index if not exists ledger_statement_transactions_source_identity_key on public.ledger_statement_transactions(import_id, source_identity);
