@@ -41,3 +41,32 @@ test('Cash Guard CSS defines a responsive grid with overflow-safe typography for
   assert.match(css, /\.cash-guard-item > strong\s*\{[^}]*font-size:\s*clamp\(/);
   assert.match(css, /@media \(max-width: 620px\)/);
 });
+
+test('Planned One-Offs has no Manage button and is updated by the same Recalculate flow as Variable Essentials', () => {
+  assert.doesNotMatch(cashGuardCard, /Manage/);
+  const plannedSection = cashGuardCard.slice(cashGuardCard.indexOf('4. Planned One-Offs'));
+  assert.doesNotMatch(plannedSection.slice(0, plannedSection.indexOf('5. Build Emergency Fund')), /recalculateCashGuard/);
+
+  // A single Recalculate action (recalculateCashGuard) saves both reserves together.
+  const recalcBody = cashGuardCard.slice(
+    cashGuardCard.indexOf('async function recalculateCashGuard'),
+    cashGuardCard.indexOf('export default async function CashGuardCard'),
+  );
+  assert.match(recalcBody, /variableEssentialsReserve:\s*estimate\.variableEssentialsReserve/);
+  assert.match(recalcBody, /plannedOneOffsReserve:\s*estimate\.plannedOneOffsReserve/);
+});
+
+test('Adjust on Variable Essentials always tags the reserve as a manual override', () => {
+  const adjustBody = cashGuardCard.slice(
+    cashGuardCard.indexOf('async function adjustVariableEssentials'),
+    cashGuardCard.indexOf('async function adjustPlannedOneOffs'),
+  );
+  assert.match(adjustBody, /variableEssentialsSource:\s*'manual'/);
+});
+
+test('Build Emergency Fund is the only card that consumes the residual cash calculation; no separate Safe to Spend or Available Cash section exists', () => {
+  assert.doesNotMatch(cashGuardCard, /Safe to Spend/);
+  assert.doesNotMatch(cashGuardCard, /Available Cash/);
+  const emergencyFundSection = cashGuardCard.slice(cashGuardCard.indexOf('5. Build Emergency Fund'));
+  assert.match(emergencyFundSection, /summary\.safeToSpend/);
+});
